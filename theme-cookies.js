@@ -21,12 +21,37 @@ export default {
         ? modeRaw
         : "dark";
 
-    const rewriter = new HTMLRewriter().on("html", {
-      element(el) {
-        el.setAttribute("data-theme", theme);
-        el.setAttribute("data-mode", mode);
-      },
-    });
+    // Script to fix browser back/forward cache (bfcache) showing stale themes
+    const bfcacheScript = `
+      <script>
+        window.addEventListener('pageshow', (event) => {
+          if (event.persisted) {
+            const getCookie = (name) => {
+              const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+              return match ? decodeURIComponent(match[2]) : null;
+            };
+            const theme = getCookie('theme') || 'brown';
+            const mode = getCookie('mode') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.setAttribute('data-mode', mode);
+          }
+        });
+      </script>
+    `;
+
+    const rewriter = new HTMLRewriter()
+      .on("html", {
+        element(el) {
+          el.setAttribute("data-theme", theme);
+          el.setAttribute("data-mode", mode);
+        },
+      })
+      .on("head", {
+        element(el) {
+          // Inject the script directly into the <head> of the page
+          el.append(bfcacheScript, { html: true });
+        }
+      });
 
     const transformed = rewriter.transform(response);
 
