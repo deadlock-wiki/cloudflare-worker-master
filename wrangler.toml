@@ -2,5 +2,6 @@ name = 'theme-cookies'
 main = "theme-cookies.js"
 compatibility_date = "2024-06-17"
 
-[observability]
+[observability.logs]
 enabled = false
+invocation_logs = true
