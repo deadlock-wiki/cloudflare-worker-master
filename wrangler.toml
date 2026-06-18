@@ -5,3 +5,6 @@ compatibility_date = "2026-06-18"
 [observability.logs]
 enabled = true
 invocation_logs = true
+
+[vars]
+MEDIAWIKI_API = "https://deadlock.wiki/api.php"
