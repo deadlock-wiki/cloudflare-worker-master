@@ -1,5 +1,5 @@
 const LIMIT = 4;
-const TTL_MS = 5 * 60 * 1000;
+const TTL_MS = 60 * 1000;
 const HTML_CACHE_KEY = "https://rc-cache.local/recentchanges.html";
 
 export async function getRecentChangesHTML(env) {
