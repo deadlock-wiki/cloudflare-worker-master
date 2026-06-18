@@ -8,3 +8,6 @@ invocation_logs = true
 
 [vars]
 MEDIAWIKI_API = "https://deadlock.wiki/api.php"
+
+[env.develop]
+name = 'develop'
