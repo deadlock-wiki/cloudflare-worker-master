@@ -1,3 +1,6 @@
 name = 'theme-cookies'
 main = "theme-cookies.js"
 compatibility_date = "2024-06-17"
+
+[observability]
+enabled = false
