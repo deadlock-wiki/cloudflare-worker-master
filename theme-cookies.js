@@ -30,10 +30,13 @@ export default {
 
     const transformed = rewriter.transform(response);
 
-    // Protect personalized HTML from shared caches
-    transformed.headers.set("Cache-Control", "private, no-cache");
+    // Clone into a new Response object so the headers become mutable
+    const finalResponse = new Response(transformed.body, transformed);
 
-    return transformed;
+    // Protect personalized HTML from shared caches
+    finalResponse.headers.set("Cache-Control", "private, no-cache");
+
+    return finalResponse;
   },
 };
 
