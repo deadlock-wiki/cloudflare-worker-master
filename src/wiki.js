@@ -6,6 +6,36 @@ export async function handleWikiRequest(request, env) {
     try {
         const url = new URL(request.url);
 
+        // PURGE ENDPOINT
+        if (request.method === "POST" && url.pathname === "/api/purge") {
+            try {
+                const providedSecret = url.searchParams.get("secret");
+                if (!providedSecret || providedSecret !== env.PURGE_SECRET) {
+                    return new Response("Unauthorized", { status: 401 });
+                }
+
+                const cache = await caches.open("recent-changes-cache");
+                const cacheKey = new Request("https://rc-cache.local/recentchanges.html");
+                const deleted = await cache.delete(cacheKey);
+
+                return new Response(
+                    JSON.stringify({ ok: deleted, purged: "recent-changes-cache" }),
+                    {
+                        status: 200,
+                        headers: { "Content-Type": "application/json" },
+                    }
+                );
+            } catch (err) {
+                return new Response(
+                    JSON.stringify({ ok: false, error: String(err) }),
+                    {
+                        status: 500,
+                        headers: { "Content-Type": "application/json" },
+                    }
+                );
+            }
+        }
+
         // API ROUTE
         if (request.method === "GET" && url.pathname === "/api/recent-changes") {
             try {
