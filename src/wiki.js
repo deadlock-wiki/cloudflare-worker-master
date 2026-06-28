@@ -58,7 +58,7 @@ export async function handleWikiRequest(request, env) {
         } catch {}
 
         if (widgetHtml) {
-            rewriter.on("#p-Recent_changes ul.vector-menu-content-list", {
+            rewriter.on("#p-Recent_Changes ul.vector-menu-content-list", {
                 element(el) {
                     el.setAttribute("class", "vector-menu-content-list recent-changes-list");
                     el.setInnerContent(widgetHtml, { html: true });
