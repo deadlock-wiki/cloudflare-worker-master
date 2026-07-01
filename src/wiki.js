@@ -36,8 +36,8 @@ export async function handleWikiRequest(request, env) {
             }
         }
 
-        // FETCH ORIGIN
-        const originResponse = await fetch(request);
+        // FETCH ORIGIN (Bypass internal subrequest caching to prevent stale double-caches)
+        const originResponse = await fetch(new Request(request, { cache: "no-store" }));
 
         const contentType = originResponse.headers.get("Content-Type") || "";
         if (!contentType.toLowerCase().includes("text/html")) {
@@ -72,6 +72,7 @@ export async function handleWikiRequest(request, env) {
             return originResponse;
         }
     } catch {
-        return fetch(request);
+        // Fallback safety route
+        return fetch(new Request(request, { cache: "no-store" }));
     }
 }
