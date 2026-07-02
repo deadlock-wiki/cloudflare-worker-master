@@ -36,8 +36,8 @@ export async function handleWikiRequest(request, env) {
             }
         }
 
-        // FETCH ORIGIN (Bypass internal subrequest caching to prevent stale double-caches)
-        const originResponse = await fetch(new Request(request, { cache: "no-store" }));
+        // FETCH ORIGIN (Reverted to standard fetch so Cloudflare can cache the asset safely)
+        const originResponse = await fetch(request);
 
         const contentType = originResponse.headers.get("Content-Type") || "";
         if (!contentType.toLowerCase().includes("text/html")) {
@@ -73,6 +73,6 @@ export async function handleWikiRequest(request, env) {
         }
     } catch {
         // Fallback safety route
-        return fetch(new Request(request, { cache: "no-store" }));
+        return fetch(request);
     }
 }
