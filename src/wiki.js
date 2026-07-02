@@ -5,6 +5,7 @@ import { applyThemeRewriter } from "./theme-cookies.js";
 export async function handleWikiRequest(request, env) {
     try {
         const url = new URL(request.url);
+        const cookieHeader = request.headers.get("Cookie") || "";
 
         // API ROUTE
         if (request.method === "GET" && url.pathname === "/api/recent-changes") {
@@ -36,8 +37,24 @@ export async function handleWikiRequest(request, env) {
             }
         }
 
-        // FETCH ORIGIN (Reverted to standard fetch so Cloudflare can cache the asset safely)
-        const originResponse = await fetch(request);
+        // PROGRAMMATIC EDGE CACHE LOGIC
+        const isGet = request.method === "GET";
+        const isPhpScript = url.pathname.includes(".php");
+        const isLoggedOut = !cookieHeader.includes("deadlockUserID=");
+        const hasNoAction = !url.searchParams.has("action");
+
+        let fetchOptions = {};
+        
+        // Force Cloudflare to cache the HTML page at the edge for logged-out visitors
+        if (isGet && !isPhpScript && isLoggedOut && hasNoAction) {
+            fetchOptions.cf = {
+                cacheEverything: true,
+                cacheTtl: 7200 // Cache at the edge data center for 2 hours
+            };
+        }
+
+        // FETCH ORIGIN (With custom edge caching instructions embedded)
+        const originResponse = await fetch(request, fetchOptions);
 
         const contentType = originResponse.headers.get("Content-Type") || "";
         if (!contentType.toLowerCase().includes("text/html")) {
@@ -72,7 +89,6 @@ export async function handleWikiRequest(request, env) {
             return originResponse;
         }
     } catch {
-        // Fallback safety route
         return fetch(request);
     }
 }
