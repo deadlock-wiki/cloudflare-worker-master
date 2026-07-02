@@ -37,23 +37,21 @@ export async function handleWikiRequest(request, env) {
             }
         }
 
-        // PROGRAMMATIC EDGE CACHE LOGIC
+        // Programmatic subrequest edge caching
         const isGet = request.method === "GET";
         const isPhpScript = url.pathname.includes(".php");
         const isLoggedOut = !cookieHeader.includes("deadlockUserID=");
         const hasNoAction = !url.searchParams.has("action");
 
         let fetchOptions = {};
-        
-        // Force Cloudflare to cache the HTML page at the edge for logged-out visitors
         if (isGet && !isPhpScript && isLoggedOut && hasNoAction) {
             fetchOptions.cf = {
                 cacheEverything: true,
-                cacheTtl: 7200 // Cache at the edge data center for 2 hours
+                cacheTtl: 7200 // Keep assets hot at the edge for 2 hours
             };
         }
 
-        // FETCH ORIGIN (With custom edge caching instructions embedded)
+        // FETCH ORIGIN
         const originResponse = await fetch(request, fetchOptions);
 
         const contentType = originResponse.headers.get("Content-Type") || "";
@@ -83,11 +81,24 @@ export async function handleWikiRequest(request, env) {
             });
         }
 
-        try {
-            return rewriter.transform(originResponse);
-        } catch {
-            return originResponse;
+        // Transform the stream via HTMLRewriter
+        let transformedResponse = rewriter.transform(originResponse);
+
+        // BRIDGE WIKI X-CACHE-TAG TO CLOUDFLARE NATIVE CACHE-TAG INDEX
+        const xCacheTag = originResponse.headers.get("X-Cache-Tag");
+        if (xCacheTag) {
+            const newHeaders = new Headers(transformedResponse.headers);
+            // 'Cache-Tag' registers this response into Cloudflare's surgical purge-by-tag engine
+            newHeaders.set("Cache-Tag", xCacheTag);
+
+            return new Response(transformedResponse.body, {
+                status: transformedResponse.status,
+                statusText: transformedResponse.statusText,
+                headers: newHeaders
+            });
         }
+
+        return transformedResponse;
     } catch {
         return fetch(request);
     }
