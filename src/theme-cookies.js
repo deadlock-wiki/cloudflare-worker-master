@@ -70,6 +70,10 @@ export function applyThemeRewriter(rewriter, request) {
   const isFixedWidth = cookies.fixedWidth === "1";
   const fixedWidthValue = isFixedWidth ? "min(1450px, 90vw)" : "100vw";
 
+  // Pre-calculate theme classes and titles to match gadget definitions
+  const themeClass = mode === "light" ? "is-light" : "is-dark";
+  const themeLabel = mode === "light" ? "Switch to dark theme" : "Switch to light theme";
+
   rewriter
       .on("html", {
         element(el) {
@@ -86,11 +90,13 @@ export function applyThemeRewriter(rewriter, request) {
           el.append(BFCACHE_SCRIPT, { html: true });
         },
       })
-      // Prepend the toggle item element cleanly in the stream without client-side polling delays
+      // Prepend both toggles seamlessly into the personal bar stream
       .on("#p-personal ul", {
         element(el) {
-          const toggleHtml = `<li id="pt-fixedwidth-toggle"><a href="#" aria-label="Toggle fixed width"></a></li>`;
-          el.prepend(toggleHtml, { html: true });
+          const themeToggleHtml = `<li id="pt-theme-toggle"><a href="#" class="${themeClass}" aria-label="${themeLabel}" title="${themeLabel}"></a></li>`;
+          const fixedWidthToggleHtml = `<li id="pt-fixedwidth-toggle"><a href="#" aria-label="Toggle fixed width">Toggle Width</a></li>`;
+          
+          el.prepend(themeToggleHtml + fixedWidthToggleHtml, { html: true });
         }
       });
 
