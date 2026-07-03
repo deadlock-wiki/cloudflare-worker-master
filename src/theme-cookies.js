@@ -16,6 +16,10 @@ const BFCACHE_SCRIPT = `
             const mode = getCookie('mode') || '${DEFAULT_MODE}';
             document.documentElement.setAttribute('data-theme', theme);
             document.documentElement.setAttribute('data-mode', mode);
+            
+            // Sync layout changes on history traversal
+            const fixedWidth = getCookie('fixedWidth') || '0';
+            document.documentElement.style.setProperty('--fixed-width', fixedWidth === '1' ? 'min(1450px, 90vw)' : '100vw');
           }
         });
       </script>
@@ -23,55 +27,33 @@ const BFCACHE_SCRIPT = `
 
 function parseCookies(cookieHeader) {
   const out = Object.create(null);
-
-  if (typeof cookieHeader !== "string" || !cookieHeader) {
-    return out;
-  }
+  if (typeof cookieHeader !== "string" || !cookieHeader) return out;
 
   for (const part of cookieHeader.split(";")) {
     const s = part.trim();
     if (!s) continue;
-
     const eq = s.indexOf("=");
     if (eq === -1) continue;
-
     const name = s.slice(0, eq).trim();
     const value = s.slice(eq + 1).trim();
-
     if (!name) continue;
 
-    const unquoted =
-        value.length >= 2 && value.startsWith('"') && value.endsWith('"')
-            ? value.slice(1, -1)
-            : value;
-
+    const unquoted = value.length >= 2 && value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
     out[name] = safeDecodeURIComponent(unquoted);
   }
-
   return out;
 }
 
 function sanitizeToken(value) {
-  if (typeof value !== "string") return null;
-  if (!value) return null;
-
-  if (!TOKEN_PATTERN.test(value)) return null;
-
+  if (typeof value !== "string" || !value || !TOKEN_PATTERN.test(value)) return null;
   return value;
 }
 
 function safeDecodeURIComponent(s) {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
+  try { return decodeURIComponent(s); } catch { return s; }
 }
 
-function resolveTheme(rawTheme) {
-  return sanitizeToken(rawTheme) || DEFAULT_THEME;
-}
-
+function resolveTheme(rawTheme) { return sanitizeToken(rawTheme) || DEFAULT_THEME; }
 function resolveMode(rawMode) {
   const mode = sanitizeToken(rawMode);
   return VALID_MODES.includes(mode) ? mode : DEFAULT_MODE;
@@ -84,17 +66,32 @@ export function applyThemeRewriter(rewriter, request) {
   const theme = resolveTheme(cookies.theme);
   const mode = resolveMode(cookies.mode);
 
+  // Read fixedWidth layout layout rule from cookies
+  const isFixedWidth = cookies.fixedWidth === "1";
+  const fixedWidthValue = isFixedWidth ? "min(1450px, 90vw)" : "100vw";
+
   rewriter
       .on("html", {
         element(el) {
           el.setAttribute("data-theme", theme);
           el.setAttribute("data-mode", mode);
+
+          // Append layout styling directly onto the root HTML element server-side
+          const existingStyle = el.getAttribute("style") || "";
+          el.setAttribute("style", `${existingStyle}; --fixed-width: ${fixedWidthValue};`.trim());
         },
       })
       .on("head", {
         element(el) {
           el.append(BFCACHE_SCRIPT, { html: true });
         },
+      })
+      // Prepend the toggle item element cleanly in the stream without client-side polling delays
+      .on("#p-personal ul", {
+        element(el) {
+          const toggleHtml = `<li id="pt-fixedwidth-toggle"><a href="#" aria-label="Toggle fixed width"></a></li>`;
+          el.prepend(toggleHtml, { html: true });
+        }
       });
 
   return rewriter;

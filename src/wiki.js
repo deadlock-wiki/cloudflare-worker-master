@@ -1,4 +1,3 @@
-// src/wiki.js
 import { getRecentChangesHTML } from "./recent-changes.js";
 import { applyThemeRewriter } from "./theme-cookies.js";
 

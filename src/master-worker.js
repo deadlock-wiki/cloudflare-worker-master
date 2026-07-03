@@ -1,4 +1,3 @@
-// src/master-worker.js
 import { handleWikiRequest } from "./wiki.js";
 
 export default {
