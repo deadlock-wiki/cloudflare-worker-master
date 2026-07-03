@@ -10,7 +10,6 @@ const FEEDBACK_STYLE = `
     color: var(--link-color);
     padding: 0 5px;
     transition: 0.1s background-color ease;
-    border-radius: 2px;
 }
 /* Instantly display the button on Main/Article namespace pages */
 body.ns-0 .feedback-button {
@@ -147,8 +146,8 @@ const FEEDBACK_SCRIPT = `
 <script>
 (function() {
     function initFeedback() {
-        // Poll until jQuery and mediaWiki are available on the client side
-        if (!window.jQuery || !window.mediaWiki) {
+        // Poll until jQuery, mediaWiki, AND ResourceLoader dependencies are fully built
+        if (!window.jQuery || !window.mediaWiki || !window.mediaWiki.loader || typeof window.mediaWiki.loader.using !== 'function') {
             setTimeout(initFeedback, 50);
             return;
         }
