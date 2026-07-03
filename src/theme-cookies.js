@@ -25,8 +25,16 @@ const BFCACHE_SCRIPT = `
       </script>
     `;
 
+// CRITICAL CSS: Contains early layout rules for BOTH toggles to ensure zero FOUC/CLS
 const CRITICAL_CSS = `
       <style>
+        /* Shared alignment styles to keep your menu neat and consistent */
+        #pt-theme-toggle, #pt-fixedwidth-toggle {
+          display: inline-block;
+          vertical-align: middle;
+        }
+
+        /* Theme Toggle Styling */
         #pt-theme-toggle a {
           width: 16px;
           height: 16px;
@@ -50,6 +58,28 @@ const CRITICAL_CSS = `
         #pt-theme-toggle a.is-dark {
           -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='black' stroke-width='1.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z'/%3E%3C/svg%3E");
           mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='black' stroke-width='1.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z'/%3E%3C/svg%3E");
+        }
+
+        /* Fixed-Width Toggle Styling (Inlined from Gadget Rules) */
+        #pt-fixedwidth-toggle a {
+          width: 14px;
+          height: 14px;
+          display: block;
+          opacity: 0.6;
+          background: var(--color-base);
+          -webkit-mask-clip: inherit;
+          mask-clip: inherit;
+          -webkit-mask-image: url("/load.php?format=original&image=fullScreen&variant=invert&modules=oojs-ui.styles.icons-media&skin=vector");
+          mask-image: url("/load.php?format=original&image=fullScreen&variant=invert&modules=oojs-ui.styles.icons-media&skin=vector");
+          -webkit-mask-size: 14px 14px;
+          mask-size: 14px 14px;
+          -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+          -webkit-mask-position: center;
+          mask-position: center;
+        }
+        #pt-fixedwidth-toggle a:hover {
+          opacity: 1;
         }
       </style>
     `;
@@ -116,16 +146,17 @@ export function applyThemeRewriter(rewriter, request) {
       })
       .on("head", {
         element(el) {
-          // Append the cache scripts and your actual gadget masking styles seamlessly
           el.append(BFCACHE_SCRIPT + CRITICAL_CSS, { html: true });
         },
       })
       .on("#p-personal ul", {
         element(el) {
           const themeToggleHtml = `<li id="pt-theme-toggle"><a href="#" class="${themeClass}" aria-label="${themeLabel}" title="${themeLabel}"></a></li>`;
-          const fixedWidthToggleHtml = `<li id="pt-fixedwidth-toggle"><a href="#" aria-label="Toggle fixed width">Toggle Width</a></li>`;
           
-          // Preserved visual ordering: fixed-width displays to the right of the theme icon
+          // FIX: Stripped out the "Toggle Width" inner text content.
+          // This creates a completely empty anchor tag container that perfectly respects your icon size parameters instantly.
+          const fixedWidthToggleHtml = `<li id="pt-fixedwidth-toggle"><a href="#" aria-label="Toggle fixed width"></a></li>`;
+          
           el.prepend(fixedWidthToggleHtml + themeToggleHtml, { html: true });
         }
       });

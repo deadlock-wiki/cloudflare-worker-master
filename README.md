@@ -1,2 +1,1 @@
-# cloudflare-worker-theme-cookies
-test branch
+# cloudflare-worker-master
