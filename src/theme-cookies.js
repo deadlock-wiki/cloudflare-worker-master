@@ -167,7 +167,7 @@ export function applyThemeRewriter(rewriter, request) {
           const themeToggleHtml = `<li id="pt-theme-toggle"><a href="#" class="${themeClass}" aria-label="${themeLabel}" title="${themeLabel}"></a></li>`;
           const fixedWidthToggleHtml = `<li id="pt-fixedwidth-toggle"><a href="#" class="${fixedWidthClass}" aria-label="${fixedWidthLabel}" title="${fixedWidthLabel}"></a></li>`;
           
-          el.prepend(fixedWidthToggleHtml + themeToggleHtml, { html: true });
+          el.prepend(themeToggleHtml + fixedWidthToggleHtml, { html: true });
         }
       });
 
