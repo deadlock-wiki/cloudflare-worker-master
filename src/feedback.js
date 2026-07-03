@@ -10,6 +10,7 @@ const FEEDBACK_STYLE = `
     display: inline-block;
     padding: 0 5px;
     transition: 0.1s background-color ease;
+    border-radius: 2px;
 }
 .feedback-button::before {
     content: '';
