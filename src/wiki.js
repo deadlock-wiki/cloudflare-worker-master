@@ -44,15 +44,38 @@ export async function handleWikiRequest(request, env) {
         const hasNoAction = !url.searchParams.has("action");
 
         let fetchOptions = {};
+        let proxyRequest = request;
+
         if (isGet && !isPhpScript && isLoggedOut && hasNoAction) {
             fetchOptions.cf = {
                 cacheEverything: true,
                 cacheTtl: 7200 // Keep assets hot at the edge for 2 hours
             };
+
+            // Split Cloudflare edge cache into separate Desktop and Mobile buckets
+            const proxyUrl = new URL(request.url);
+            if (!proxyUrl.searchParams.has("useformat")) {
+                let format = "desktop";
+                
+                // Check for MediaWiki MobileFrontend explicit desktop preferences
+                if (cookieHeader.includes("stopMobileRedirect=1") || cookieHeader.includes("mf_useformat=desktop")) {
+                    format = "desktop";
+                // Check for explicit mobile preferences
+                } else if (cookieHeader.includes("mf_useformat=mobile")) {
+                    format = "mobile";
+                // Fallback to Cloudflare edge device detection if no preference cookies are present
+                } else if (request.cf && (request.cf.deviceType === "mobile" || request.cf.deviceType === "tablet")) {
+                    format = "mobile";
+                }
+                
+                // Append the format into the cache-key URL context natively understood by MediaWiki
+                proxyUrl.searchParams.set("useformat", format);
+                proxyRequest = new Request(proxyUrl.toString(), request);
+            }
         }
 
-        // FETCH ORIGIN
-        const originResponse = await fetch(request, fetchOptions);
+        // FETCH ORIGIN (using the separated proxy URL bucket if logged out)
+        const originResponse = await fetch(proxyRequest, fetchOptions);
 
         const contentType = originResponse.headers.get("Content-Type") || "";
         if (!contentType.toLowerCase().includes("text/html")) {
