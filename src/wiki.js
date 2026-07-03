@@ -1,5 +1,6 @@
 import { getRecentChangesHTML } from "./recent-changes.js";
 import { applyThemeRewriter } from "./theme-cookies.js";
+import { applyFeedbackRewriter } from "./feedback.js";
 
 export async function handleWikiRequest(request, env) {
     try {
@@ -96,6 +97,10 @@ export async function handleWikiRequest(request, env) {
 
         try {
             applyThemeRewriter(rewriter, request);
+        } catch {}
+
+        try {
+            applyFeedbackRewriter(rewriter);
         } catch {}
 
         if (widgetHtml) {
