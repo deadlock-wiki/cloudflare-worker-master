@@ -1,16 +1,20 @@
 const FEEDBACK_STYLE = `
 <style>
 .feedback-button {
+    display: none; /* Hide by default on non-article pages */
     margin-left: 20px;
     font-size: 16px;
     cursor: pointer;
     position: relative;
     font-family: 'Retail Demo', 'Open Sans';
     color: var(--link-color);
-    display: inline-block;
     padding: 0 5px;
     transition: 0.1s background-color ease;
     border-radius: 2px;
+}
+/* Instantly display the button on Main/Article namespace pages */
+body.ns-0 .feedback-button {
+    display: inline-block;
 }
 .feedback-button::before {
     content: '';
@@ -246,17 +250,11 @@ const FEEDBACK_SCRIPT = `
                     });
                 }
                 
-                // Construct standard markup matching the custom CSS context rules
-                const $customButton = $('<a>')
-                    .attr('href', '#')
-                    .addClass('feedback-button')
-                    .text('Give feedback')
-                    .on('click', function (e) {
-                        e.preventDefault(); 
-                        openFeedbackDialog();
-                    });
-
-                $('#firstHeading').append($customButton);
+                // Bind click event handler to the pre-rendered server-side button
+                $('.feedback-button').on('click', function (e) {
+                    e.preventDefault(); 
+                    openFeedbackDialog();
+                });
             }
             // Standard module loading happens async here, long after the button is visible
             mw.loader.using([
@@ -273,10 +271,20 @@ const FEEDBACK_SCRIPT = `
 `;
 
 export function applyFeedbackRewriter(rewriter) {
-    // Append the style and script elements natively before the closing </body> tag
-    rewriter.on("body", {
+    rewriter.on("head", {
         element(el) {
             el.append(FEEDBACK_STYLE, { html: true });
+        },
+    });
+
+    rewriter.on("#firstHeading", {
+        element(el) {
+            el.append('<a href="#" class="feedback-button">Give feedback</a>', { html: true });
+        },
+    });
+
+    rewriter.on("body", {
+        element(el) {
             el.append(FEEDBACK_SCRIPT, { html: true });
         },
     });
