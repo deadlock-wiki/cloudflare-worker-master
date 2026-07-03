@@ -270,18 +270,21 @@ const FEEDBACK_SCRIPT = `
 `;
 
 export function applyFeedbackRewriter(rewriter) {
+    // 1. Append styles to the <head> tag to ensure browser applies it immediately
     rewriter.on("head", {
         element(el) {
             el.append(FEEDBACK_STYLE, { html: true });
         },
     });
 
+    // 2. Inject the HTML string natively onto the edge proxy directly inside #firstHeading
     rewriter.on("#firstHeading", {
         element(el) {
             el.append('<a href="#" class="feedback-button">Give feedback</a>', { html: true });
         },
     });
 
+    // 3. Append the operational logic script before the closing body tag
     rewriter.on("body", {
         element(el) {
             el.append(FEEDBACK_SCRIPT, { html: true });
