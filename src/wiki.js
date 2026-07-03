@@ -40,11 +40,15 @@ export async function handleWikiRequest(request, env) {
         const isGet = request.method === "GET";
         const isPhpScript = url.pathname.includes(".php");
         const isLoggedOut = !cookieHeader.includes("deadlockUserID=");
-        const hasNoAction = !url.searchParams.has("action");
-
+        
+        // FIX: Do not optimize or force formats if a view toggle or explicit format is requested
+        const hasNoAction = !url.searchParams.has("action") && 
+                            !url.searchParams.has("mobileaction") && 
+                            !url.searchParams.has("useformat");
+        
         let fetchOptions = {};
         let proxyRequest = request;
-
+        
         if (isGet && !isPhpScript && isLoggedOut && hasNoAction) {
             fetchOptions.cf = {
                 cacheEverything: true,
