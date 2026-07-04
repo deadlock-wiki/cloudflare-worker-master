@@ -18,7 +18,7 @@ const BFCACHE_SCRIPT = `
             document.documentElement.setAttribute('data-mode', mode);
             
             // Sync layout changes on history traversal
-            const fixedWidth = getCookie('fixedWidth') || '0';
+            const fixedWidth = getCookie('fixedWidth') || '1';
             document.documentElement.style.setProperty('--fixed-width', fixedWidth === '1' ? 'min(1450px, 90vw)' : '100vw');
           }
         });
@@ -136,7 +136,7 @@ export function applyThemeRewriter(rewriter, request) {
   const mode = resolveMode(cookies.mode);
 
   // Read fixedWidth layout rule from cookies
-  const isFixedWidth = cookies.fixedWidth === "1";
+  const isFixedWidth = cookies.fixedWidth !== "0";
   const fixedWidthValue = isFixedWidth ? "min(1450px, 90vw)" : "100vw";
 
   // Pre-calculate theme classes and titles to match gadget definitions
