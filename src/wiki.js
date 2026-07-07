@@ -69,7 +69,10 @@ export async function handleWikiRequest(request, env) {
             let format = "desktop";
             
             // 3. Prefix-agnostic preference cookie detection
-            if (cookieHeader.includes("stopMobileRedirect=") || cookieHeader.includes("useformat=desktop")) {
+            const stopMobileMatch = cookieHeader.match(/stopMobileRedirect=([^;]+)/);
+            const isStopMobileActive = stopMobileMatch && !["0", "false"].includes(stopMobileMatch[1].trim());
+
+            if (isStopMobileActive || cookieHeader.includes("useformat=desktop")) {
                 format = "desktop";
             } else if (cookieHeader.includes("useformat=mobile")) {
                 format = "mobile";
