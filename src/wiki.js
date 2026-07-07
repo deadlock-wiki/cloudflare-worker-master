@@ -68,15 +68,8 @@ export async function handleWikiRequest(request, env) {
             const proxyUrl = new URL(request.url);
             let format = "desktop";
             
-            // 3. Prefix-agnostic preference cookie detection
-            const stopMobileMatch = cookieHeader.match(/stopMobileRedirect=([^;]+)/);
-            const isStopMobileActive = stopMobileMatch && !["0", "false"].includes(stopMobileMatch[1].trim());
-
-            if (isStopMobileActive || cookieHeader.includes("useformat=desktop")) {
-                format = "desktop";
-            } else if (cookieHeader.includes("useformat=mobile")) {
-                format = "mobile";
-            } else if (request.cf && (request.cf.deviceType === "mobile" || request.cf.deviceType === "tablet")) {
+            // Rely exclusively on Cloudflare's edge device detection
+            if (request.cf && (request.cf.deviceType === "mobile" || request.cf.deviceType === "tablet")) {
                 format = "mobile";
             }
             
