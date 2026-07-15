@@ -150,18 +150,20 @@ const FEEDBACK_SCRIPT = `
         }
         (function ($, mw) {
             'use strict';
+            
             function escapeForTemplate(value) {
                 return String(value || '')
-                    .replace(/&/g, '&amp;')
-                    .replace(/=/g, '&#61;')
-                    .replace(/\\\\{/g, '&#123;')
-                    .replace(/\\\\}/g, '&#125;')
-                    .replace(/\\\\|/g, '&#124;')
-                    .replace(/\\\\[/g, '&#91;')
-                    .replace(/\\\\]/g, '&#93;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;');
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('=', '&#61;')
+                    .replaceAll('{', '&#123;')
+                    .replaceAll('}', '&#125;')
+                    .replaceAll('|', '&#124;')
+                    .replaceAll('[', '&#91;')
+                    .replaceAll(']', '&#93;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;');
             }
+            
             function init() {
                 // Double-check namespace just to be safe
                 if (mw.config.get('wgNamespaceNumber') !== 0) {
