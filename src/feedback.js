@@ -94,6 +94,7 @@ body.ns-0 .feedback-button {
 /*///////////////////////////////*/
 .feedback-wrapper .oo-ui-window-frame {
     width: 60% !important;
+    height: 240px !important;
 }
 .feedback-wrapper .oo-ui-textInputWidget {
     max-width: unset !important;
@@ -112,7 +113,7 @@ body.ns-0 .feedback-button {
     flex: 1 !important;
 }
 .feedback-wrapper .oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input {
-    min-height: 120px !important;
+    height: 120px !important;
 }
 .feedback-wrapper .oo-ui-messageDialog-title {
     font-weight: bold;
@@ -135,6 +136,16 @@ body.ns-0 .feedback-button {
     font-size: 13px;
     display: block;
     opacity: 0.7;
+}
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .feedback-wrapper .oo-ui-window-frame {
+        width: 90% !important;
+        height: 280px !important;
+    }
+    .feedback-wrapper .oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input {
+        height: 140px !important;
+    }
 }
 </style>
 `;
@@ -175,8 +186,7 @@ const FEEDBACK_SCRIPT = `
                 
                 const feedbackInput = new OO.ui.MultilineTextInputWidget({
                     placeholder: 'What can be improved on this page? Is anything wrong? Is there anything you would like to see added?',
-                    rows: 6,
-                    autosize: true
+                    rows: 6
                 });
 
                 // Create a custom Dialog class so we can intercept the submit action
