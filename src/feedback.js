@@ -111,11 +111,8 @@ body.ns-0 .feedback-button {
 .feedback-wrapper .oo-ui-messageDialog-actions-vertical .oo-ui-actionWidget {
     flex: 1 !important;
 }
-.feedback-wrapper .oo-ui-window-frame {
-    height: 239.719px !important;
-}
 .feedback-wrapper .oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input {
-    height: 132px !important;
+    min-height: 120px !important;
 }
 .feedback-wrapper .oo-ui-messageDialog-title {
     font-weight: bold;
@@ -156,11 +153,12 @@ const FEEDBACK_SCRIPT = `
             function escapeForTemplate(value) {
                 return String(value || '')
                     .replace(/&/g, '&amp;')
-                    .replace(/\\{/g, '&#123;')
-                    .replace(/\\}/g, '&#125;')
-                    .replace(/\\|/g, '&#124;')
-                    .replace(/\\[/g, '&#91;')
-                    .replace(/\\]/g, '&#93;')
+                    .replace(/=/g, '&#61;')
+                    .replace(/\\\\{/g, '&#123;')
+                    .replace(/\\\\}/g, '&#125;')
+                    .replace(/\\\\|/g, '&#124;')
+                    .replace(/\\\\[/g, '&#91;')
+                    .replace(/\\\\]/g, '&#93;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;');
             }
@@ -173,12 +171,36 @@ const FEEDBACK_SCRIPT = `
                 const windowManager = new OO.ui.WindowManager();
                 $(document.body).append(windowManager.$element);
                 
-                const feedbackDialog = new OO.ui.MessageDialog();
-                feedbackDialog.$element.addClass('feedback-wrapper');
                 const feedbackInput = new OO.ui.MultilineTextInputWidget({
                     placeholder: 'What can be improved on this page? Is anything wrong? Is there anything you would like to see added?',
                     rows: 6,
                     autosize: true
+                });
+
+                // Create a custom Dialog class so we can intercept the submit action
+                function FeedbackDialog(config) {
+                    FeedbackDialog.super.call(this, config);
+                }
+                OO.inheritClass(FeedbackDialog, OO.ui.MessageDialog);
+
+                // Override the action process to check length BEFORE closing
+                FeedbackDialog.prototype.getActionProcess = function (action) {
+                    const dialog = this;
+                    if (action === 'submit') {
+                        const feedback = feedbackInput.getValue().trim();
+                        if (feedback.length < 5) {
+                            mw.notify('Feedback is too short.', { type: 'warning' });
+                            return new OO.ui.Process(); // Stops the dialog from closing!
+                        }
+                        return new OO.ui.Process(function () {
+                            dialog.close({ action: action });
+                        });
+                    }
+                    return FeedbackDialog.super.prototype.getActionProcess.call(this, action);
+                };
+
+                const feedbackDialog = new FeedbackDialog({
+                    classes: ['feedback-wrapper']
                 });
                 windowManager.addWindows([feedbackDialog]);
                 
@@ -216,6 +238,7 @@ const FEEDBACK_SCRIPT = `
                 }
                 
                 function openFeedbackDialog() {
+                    feedbackInput.setValue(''); // Clear previous input
                     const opening = windowManager.openWindow(feedbackDialog, {
                         title: 'Submit feedback',
                         message: feedbackInput.$element,
@@ -237,14 +260,6 @@ const FEEDBACK_SCRIPT = `
                             return;
                         }
                         const feedback = feedbackInput.getValue().trim();
-                        if (!feedback) {
-                            mw.notify('Please enter feedback.', { type: 'warning' });
-                            return;
-                        }
-                        if (feedback.length < 5) {
-                            mw.notify('Feedback is too short.', { type: 'warning' });
-                            return;
-                        }
                         submitFeedback(feedback);
                     });
                 }
@@ -260,7 +275,8 @@ const FEEDBACK_SCRIPT = `
                 'mediawiki.api',
                 'mediawiki.Title',
                 'oojs-ui-core',
-                'oojs-ui-windows'
+                'oojs-ui-windows',
+                'oojs-ui.styles.icons-interactions'
             ]).then(init);
         })(window.jQuery, window.mediaWiki);
     }
