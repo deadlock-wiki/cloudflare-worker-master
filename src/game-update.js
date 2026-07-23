@@ -1,5 +1,5 @@
 export async function checkGameUpdate(env) {
-    const latestHash = await getLatestHash();
+    const latestHash = await getLatestHash(env.DEADBOT_GH_TOKEN);
     const state = env.GAME_UPDATE_STATE;
     const previousHash = await state.get('last_hash');
 
@@ -14,11 +14,12 @@ export async function checkGameUpdate(env) {
     console.info('✅ Done!')
 }
 
-async function getLatestHash() {
+async function getLatestHash(ghToken) {
     const STEAMDB_REPO_LATEST_COMMIT_URL = 'https://api.github.com/repos/SteamDatabase/GameTracking-Deadlock/commits?per_page=1';
 
     const res = await fetch(STEAMDB_REPO_LATEST_COMMIT_URL, {
         headers: {
+            Authorization: `Bearer ${ghToken}`,
             Accept: 'application/vnd.github+json',
             'User-Agent': 'deadlock-wiki-worker',
         },
