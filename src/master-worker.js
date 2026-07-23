@@ -20,7 +20,7 @@ export default {
     async scheduled(event, env, ctx) {
         ctx.waitUntil(
             checkGameUpdate(env).catch((err) => {
-                console.error('steamdb-watcher failed:', err);
+                console.error('game-update failed:', err);
             })
         );
     },
