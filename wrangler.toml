@@ -10,7 +10,7 @@ invocation_logs = true
 MEDIAWIKI_API = "https://deadlock.wiki/api.php"
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/1 * * * *"]
 
 [[kv_namespaces]]
 binding = "GAME_UPDATE_STATE"
