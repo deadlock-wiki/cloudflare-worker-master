@@ -185,7 +185,7 @@ const FEEDBACK_SCRIPT = `
                 $(document.body).append(windowManager.$element);
                 
                 const feedbackInput = new OO.ui.MultilineTextInputWidget({
-                    placeholder: 'What can be improved on this page? Is anything wrong? Is there anything you would like to see added?',
+                    placeholder: 'What can be improved on this page? Is anything wrong? Remember that you are welcome to edit the page too!',
                     rows: 6
                 });
 
@@ -242,7 +242,7 @@ const FEEDBACK_SCRIPT = `
                         text: text,
                         summary: 'New feedback submitted'
                     }).then(function () {
-                        mw.notify('Feedback submitted successfully!', { type: 'success' });
+                        mw.notify('Feedback submitted successfully! See it in this article's talk page.', { type: 'success' });
                         feedbackInput.setValue('');
                     }).catch(function () {
                         mw.notify('Failed to submit feedback.', { type: 'error' });
