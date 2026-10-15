@@ -2,6 +2,13 @@ name = 'master'
 main = "src/master-worker.js"
 compatibility_date = "2026-06-18"
 
+# Only reachable through the zone routes; not on *.workers.dev
+workers_dev = false
+
+# Routes are currently managed in the Cloudflare dashboard. Declare them here so deploys are
+# reproducible, e.g.:
+# routes = [{ pattern = "deadlock.wiki/*", zone_name = "deadlock.wiki" }]
+
 [observability.logs]
 enabled = true
 invocation_logs = true
@@ -12,6 +19,15 @@ MEDIAWIKI_API = "https://deadlock.wiki/api.php"
 [triggers]
 crons = ["*/1 * * * *"]
 
+# Kept only so GameUpdateState can migrate the previous last_hash on first run
 [[kv_namespaces]]
 binding = "GAME_UPDATE_STATE"
 id = "3477cc58e1214dbb93c0804b9e31ea41"
+
+[[durable_objects.bindings]]
+name = "GAME_UPDATE_DO"
+class_name = "GameUpdateState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameUpdateState"]

@@ -2,128 +2,210 @@ import { getRecentChangesHTML } from "./recent-changes.js";
 import { applyThemeRewriter } from "./theme-cookies.js";
 import { applyFeedbackRewriter } from "./feedback.js";
 
-function isCacheableRequest(request) {
-    if (request.method !== "GET" && request.method !== "HEAD") return false;
+// Paths that are never wiki page views. Static assets keep the origin's own caching headers.
+const NON_PAGE_PREFIXES = [
+    "/api/",
+    "/images/",
+    "/resources/",
+    "/extensions/",
+    "/skins/",
+    "/vendor/",
+    "/cdn-cgi/",
+];
+const PHP_ENTRYPOINT = /\.php$/i;
 
-    const url = new URL(request.url);
-    const pathname = url.pathname;
-    const search = url.search;
+// MediaWiki session cookies are "<prefix>_session", "<prefix>UserID", "<prefix>UserName",
+// "<prefix>Token" and "<prefix>LoggedOut". Match on cookie NAMES only, not values.
+const BYPASS_COOKIE_SUFFIXES = ["_session", "userid", "username", "token", "loggedout"];
 
-    // Exclude special paths and internal endpoints
-    if (pathname.includes("/Special:") || search.includes("Special:")) return false;
-    if (["/api.php", "/rest.php", "/img_auth.php"].includes(pathname)) return false;
+const EDGE_CACHE_TTL_BY_STATUS = {
+    "200-299": 300,
+    "404": 10,
+    "500-599": -1,
+};
 
-    // Exclude dynamic actions (allow empty query or action=view)
-    if (search.includes("action=") && !search.includes("action=view")) return false;
+function safeDecode(value) {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
 
-    // Exclude logged-in users / session cookies
+function getCookieNames(cookieHeader) {
+    const names = [];
+    for (const part of cookieHeader.split(";")) {
+        const eq = part.indexOf("=");
+        const name = (eq === -1 ? part : part.slice(0, eq)).trim();
+        if (name) names.push(name);
+    }
+    return names;
+}
+
+function hasSessionCookie(request) {
     const cookieHeader = request.headers.get("Cookie") || "";
-    const bypassCookies = ["session", "UserID", "UserName", "LoggedOut", "Token"];
-    if (bypassCookies.some((cookie) => cookieHeader.includes(cookie))) return false;
+    if (!cookieHeader) return false;
+    return getCookieNames(cookieHeader).some((name) => {
+        const lower = name.toLowerCase();
+        return BYPASS_COOKIE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+    });
+}
+
+// Returns the page title a request points at, or null if it is not a page view.
+function getPageTitle(url) {
+    const pathname = url.pathname;
+    if (NON_PAGE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return null;
+
+    if (pathname === "/index.php") {
+        return safeDecode(url.searchParams.get("title") || "Main_Page");
+    }
+    if (PHP_ENTRYPOINT.test(pathname)) return null;
+    if (pathname === "/") return "Main_Page";
+
+    return safeDecode(pathname.slice(1));
+}
+
+function isSpecialTitle(title) {
+    return title.replace(/^\s+/, "").toLowerCase().startsWith("special:");
+}
+
+function isCacheableRequest(request, url) {
+    if (request.method !== "GET" && request.method !== "HEAD") return false;
+    if (request.headers.has("Authorization")) return false;
+
+    const title = getPageTitle(url);
+    if (title === null || isSpecialTitle(title)) return false;
+
+    // Only plain page views (no action, or action=view)
+    const action = url.searchParams.get("action");
+    if (action !== null && action !== "view") return false;
+
+    // Logged-in users and anonymous users with a session (e.g. after an anon edit)
+    if (hasSessionCookie(request)) return false;
 
     return true;
 }
 
-export async function handleWikiRequest(request, env) {
-    try {
-        const url = new URL(request.url);
-
-        // API ROUTE
-        if (request.method === "GET" && url.pathname === "/api/recent-changes") {
-            try {
-                const html = await getRecentChangesHTML(env);
-
-                if (!html) {
-                    return new Response("Unable to build recent changes widget", {
-                        status: 500,
-                        headers: { "Content-Type": "text/plain; charset=utf-8" },
-                    });
-                }
-
-                return new Response(
-                    `<ul class="vector-menu-content-list recent-changes-list">${html}</ul>`,
-                    {
-                        status: 200,
-                        headers: {
-                            "Content-Type": "text/html; charset=utf-8",
-                            "Cache-Control": "no-store",
-                        },
-                    }
-                );
-            } catch {
-                return new Response("Widget error", {
-                    status: 500,
-                    headers: { "Content-Type": "text/plain; charset=utf-8" },
-                });
-            }
-        }
-
-        const shouldCache = isCacheableRequest(request);
-
-        // Fetch origin (apply Cloudflare cache configuration ONLY if request is eligible)
-        const fetchOptions = shouldCache
-            ? {
-                  cf: {
-                      cacheEverything: true,
-                      cacheTtlByStatus: {
-                          "200-299": 300,
-                          "404": 30,
-                          "500-599": 0,
-                      },
-                  },
-              }
-            : {};
-
-        const originResponse = await fetch(request, fetchOptions);
-
-        const contentType = originResponse.headers.get("Content-Type") || "";
-        if (!contentType.toLowerCase().includes("text/html")) {
-            return originResponse;
-        }
-
-        let widgetHtml = null;
-        try {
-            widgetHtml = await getRecentChangesHTML(env);
-        } catch {
-            widgetHtml = null;
-        }
-
-        const rewriter = new HTMLRewriter();
-
-        try {
-            applyThemeRewriter(rewriter, request);
-        } catch {}
-
-        try {
-            applyFeedbackRewriter(rewriter);
-        } catch {}
-
-        if (widgetHtml) {
-            rewriter.on("#p-Recent_changes ul.vector-menu-content-list", {
-                element(el) {
-                    el.setAttribute("class", "vector-menu-content-list recent-changes-list");
-                    el.setInnerContent(widgetHtml, { html: true });
-                },
-            });
-        }
-
-        const transformedResponse = rewriter.transform(originResponse);
-
-        // Override Cache-Control headers ONLY for public, anonymous GET requests
-        if (shouldCache) {
-            const responseHeaders = new Headers(transformedResponse.headers);
-            responseHeaders.set("Cache-Control", "public, max-age=300, s-maxage=300");
-
-            return new Response(transformedResponse.body, {
-                status: transformedResponse.status,
-                statusText: transformedResponse.statusText,
-                headers: responseHeaders,
-            });
-        }
-
-        return transformedResponse;
-
-    } catch {
-        return fetch(request);
+function getCacheTags(url) {
+    const tags = ["wiki-page"];
+    const title = getPageTitle(url);
+    if (title) {
+        const tag = "page:" + encodeURIComponent(title.replace(/ /g, "_"));
+        if (tag.length <= 1024) tags.push(tag);
     }
+    return tags;
+}
+
+function widgetResponse(html) {
+    return new Response(`<ul class="vector-menu-content-list recent-changes-list">${html}</ul>`, {
+        status: 200,
+        headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "public, max-age=60",
+        },
+    });
+}
+
+export async function handleWikiRequest(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // API ROUTE
+    if (request.method === "GET" && url.pathname === "/api/recent-changes") {
+        try {
+            const html = await getRecentChangesHTML(env, ctx);
+            if (html) return widgetResponse(html);
+        } catch (err) {
+            console.error("recent-changes route failed:", err);
+        }
+        return new Response("Unable to build recent changes widget", {
+            status: 503,
+            headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+        });
+    }
+
+    const shouldCache = isCacheableRequest(request, url);
+
+    // Fetch origin (apply Cloudflare edge cache configuration ONLY if request is eligible).
+    // Responses carrying Set-Cookie are bypassed by Cloudflare's cache automatically.
+    const fetchOptions = shouldCache
+        ? {
+              cf: {
+                  cacheEverything: true,
+                  cacheTtlByStatus: EDGE_CACHE_TTL_BY_STATUS,
+                  cacheTags: getCacheTags(url),
+              },
+          }
+        : {};
+
+    // Start the widget lookup in parallel with the origin fetch; it is only awaited if the
+    // response turns out to be HTML. Skipped for asset/entrypoint requests.
+    const widgetPromise =
+        getPageTitle(url) !== null
+            ? getRecentChangesHTML(env, ctx).catch((err) => {
+                  console.error("recent-changes widget failed:", err);
+                  return null;
+              })
+            : Promise.resolve(null);
+
+    let originResponse;
+    try {
+        originResponse = await fetch(request, fetchOptions);
+    } catch (err) {
+        // Do not retry: the request body may already be consumed (POST edits).
+        console.error("origin fetch failed:", err);
+        return new Response("Origin unreachable", {
+            status: 502,
+            headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+        });
+    }
+
+    const contentType = originResponse.headers.get("Content-Type") || "";
+    if (!contentType.toLowerCase().includes("text/html")) {
+        return originResponse;
+    }
+
+    let widgetHtml = null;
+    try {
+        widgetHtml = await widgetPromise;
+    } catch {
+        widgetHtml = null;
+    }
+
+    const rewriter = new HTMLRewriter();
+
+    try {
+        applyThemeRewriter(rewriter, request);
+    } catch (err) {
+        console.error("theme rewriter failed:", err);
+    }
+
+    try {
+        applyFeedbackRewriter(rewriter);
+    } catch (err) {
+        console.error("feedback rewriter failed:", err);
+    }
+
+    if (widgetHtml) {
+        rewriter.on("#p-Recent_changes ul.vector-menu-content-list", {
+            element(el) {
+                el.setAttribute("class", "vector-menu-content-list recent-changes-list");
+                el.setInnerContent(widgetHtml, { html: true });
+            },
+        });
+    }
+
+    const transformedResponse = rewriter.transform(originResponse);
+
+    // The HTML is personalised per request (theme cookies) and differs between logged-in and
+    // anonymous users, so browsers and shared proxies must not reuse it. The edge copy of the
+    // origin response is controlled separately by cf.cacheTtlByStatus above.
+    const responseHeaders = new Headers(transformedResponse.headers);
+    responseHeaders.set("Cache-Control", "private, no-cache");
+    responseHeaders.append("Vary", "Cookie");
+
+    return new Response(transformedResponse.body, {
+        status: transformedResponse.status,
+        statusText: transformedResponse.statusText,
+        headers: responseHeaders,
+    });
 }

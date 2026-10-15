@@ -154,13 +154,11 @@ const FEEDBACK_SCRIPT = `
 <script>
 (function() {
     function initFeedback() {
-        // Poll until jQuery, mediaWiki, AND ResourceLoader dependencies are fully built
-        if (!window.jQuery || !window.mediaWiki || !window.mediaWiki.loader || typeof window.mediaWiki.loader.using !== 'function') {
-            setTimeout(initFeedback, 50);
-            return;
-        }
         (function ($, mw) {
             'use strict';
+
+            const MIN_LENGTH = 5;
+            const MAX_LENGTH = 5000;
             
             function escapeForTemplate(value) {
                 return String(value || '')
@@ -172,7 +170,8 @@ const FEEDBACK_SCRIPT = `
                     .replaceAll('[', '&#91;')
                     .replaceAll(']', '&#93;')
                     .replaceAll('<', '&lt;')
-                    .replaceAll('>', '&gt;');
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('~', '&#126;');
             }
             
             function init() {
@@ -186,8 +185,19 @@ const FEEDBACK_SCRIPT = `
                 
                 const feedbackInput = new OO.ui.MultilineTextInputWidget({
                     placeholder: 'What can be improved on this page? Is anything wrong? Remember that you are welcome to edit the page too!',
-                    rows: 6
+                    rows: 6,
+                    maxLength: MAX_LENGTH
                 });
+
+                // Anonymous edits are attributed to the poster's IP address in the public page history
+                const isAnonymous = mw.config.get('wgUserName') === null && !mw.config.get('wgUserIsTemp');
+                const $dialogMessage = $('<div>').append(feedbackInput.$element);
+                if (isAnonymous) {
+                    $dialogMessage.append(
+                        $('<span>').addClass('feedback-instruction')
+                            .text('You are not logged in. Your IP address will be publicly visible in the talk page history.')
+                    );
+                }
 
                 // Create a custom Dialog class so we can intercept the submit action
                 function FeedbackDialog(config) {
@@ -200,9 +210,13 @@ const FEEDBACK_SCRIPT = `
                     const dialog = this;
                     if (action === 'submit') {
                         const feedback = feedbackInput.getValue().trim();
-                        if (feedback.length < 5) {
+                        if (feedback.length < MIN_LENGTH) {
                             mw.notify('Feedback is too short.', { type: 'warning' });
                             return new OO.ui.Process(); // Stops the dialog from closing!
+                        }
+                        if (feedback.length > MAX_LENGTH) {
+                            mw.notify('Feedback is too long (max ' + MAX_LENGTH + ' characters).', { type: 'warning' });
+                            return new OO.ui.Process();
                         }
                         return new OO.ui.Process(function () {
                             dialog.close({ action: action });
@@ -241,11 +255,25 @@ const FEEDBACK_SCRIPT = `
                         sectiontitle: 'Feedback (' + timestamp + ')',
                         text: text,
                         summary: 'New feedback submitted'
-                    }).then(function () {
+                    }).then(function (res) {
+                        const edit = res && res.edit;
+                        if (!edit || edit.result !== 'Success') {
+                            const talkUrl = mw.util.getUrl(talkPage, { action: 'edit', section: 'new' });
+                            const reason = edit && edit.captcha
+                                ? 'This edit requires a CAPTCHA.'
+                                : 'The wiki rejected the edit.';
+                            mw.notify(
+                                $('<span>').text(reason + ' ').append(
+                                    $('<a>').attr('href', talkUrl).text('Post on the talk page directly.')
+                                ),
+                                { type: 'error', autoHide: false }
+                            );
+                            return;
+                        }
                         mw.notify("Feedback submitted successfully! See it in this article's talk page.", { type: 'success' });
                         feedbackInput.setValue('');
-                    }).catch(function () {
-                        mw.notify('Failed to submit feedback.', { type: 'error' });
+                    }).catch(function (code) {
+                        mw.notify('Failed to submit feedback' + (typeof code === 'string' ? ' (' + code + ')' : '') + '.', { type: 'error' });
                     });
                 }
                 
@@ -253,7 +281,7 @@ const FEEDBACK_SCRIPT = `
                     feedbackInput.setValue(''); // Clear previous input
                     const opening = windowManager.openWindow(feedbackDialog, {
                         title: 'Submit feedback',
-                        message: feedbackInput.$element,
+                        message: $dialogMessage,
                         actions: [
                             {
                                 action: 'submit',
@@ -282,17 +310,23 @@ const FEEDBACK_SCRIPT = `
                     openFeedbackDialog();
                 });
             }
-            // Standard module loading happens async here, long after the button is visible
-            mw.loader.using([
-                'mediawiki.api',
-                'mediawiki.Title',
-                'oojs-ui-core',
-                'oojs-ui-windows',
-                'oojs-ui.styles.icons-interactions'
-            ]).then(init);
+            init();
         })(window.jQuery, window.mediaWiki);
     }
-    initFeedback();
+    // Array entries in RLQ are deferred until mediawiki.base is ready, then passed to
+    // mw.loader.using(modules, callback). Function entries would run too early (before
+    // mw.loader.using exists). On non-MediaWiki HTML pages it simply never runs.
+    (window.RLQ = window.RLQ || []).push([
+        [
+            'mediawiki.api',
+            'mediawiki.Title',
+            'mediawiki.util',
+            'oojs-ui-core',
+            'oojs-ui-windows',
+            'oojs-ui.styles.icons-interactions'
+        ],
+        initFeedback
+    ]);
 })();
 </script>
 `;

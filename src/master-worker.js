@@ -1,6 +1,8 @@
 import { handleWikiRequest } from "./wiki.js";
 import { checkGameUpdate } from './game-update.js'
 
+export { GameUpdateState } from './game-update.js'
+
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
@@ -14,7 +16,7 @@ export default {
             finalRequest = new Request(url, request);
         }
 
-        return await handleWikiRequest(finalRequest, env);
+        return await handleWikiRequest(finalRequest, env, ctx);
     },
 
     async scheduled(event, eventEnv, ctx) {

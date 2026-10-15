@@ -2,54 +2,71 @@ const LIMIT = 4;
 const TTL_MS = 60 * 1000;
 const HTML_CACHE_KEY = "https://rc-cache.local/recentchanges.html";
 
-export async function getRecentChangesHTML(env) {
+/**
+ * Returns the widget HTML. Serves the cached copy immediately and, when it is older than
+ * TTL_MS, refreshes it in the background (stale-while-revalidate) so page requests never
+ * wait on api.php once the cache is warm.
+ */
+export async function getRecentChangesHTML(env, ctx) {
     const cache = await caches.open("recent-changes-cache");
     const cacheKey = new Request(HTML_CACHE_KEY);
 
     const htmlCached = await cache.match(cacheKey);
     if (htmlCached) {
         const cachedAt = Number(htmlCached.headers.get("X-Cached-At") || 0);
-        const age = Date.now() - cachedAt;
-        if (cachedAt && age < TTL_MS) {
-            return await htmlCached.text();
+        const html = await htmlCached.text();
+        const isStale = !cachedAt || Date.now() - cachedAt >= TTL_MS;
+
+        if (isStale) {
+            const refresh = refreshCache(env, cache, cacheKey, ctx);
+            if (ctx) {
+                ctx.waitUntil(refresh);
+            } else {
+                await refresh;
+            }
         }
+        return html;
     }
 
-    if (!env || !env.MEDIAWIKI_API) {
-        return htmlCached ? await htmlCached.text() : null;
-    }
+    // Cold cache: nothing to serve yet, so wait for the first build.
+    return await refreshCache(env, cache, cacheKey, ctx);
+}
 
-    let upstream;
-    try {
-        upstream = await fetch(buildApiUrl(env));
-    } catch {
-        return htmlCached ? await htmlCached.text() : null;
-    }
-
-    if (!upstream.ok) {
-        return htmlCached ? await htmlCached.text() : null;
-    }
+async function refreshCache(env, cache, cacheKey, ctx) {
+    if (!env || !env.MEDIAWIKI_API) return null;
 
     let data;
     try {
+        const upstream = await fetch(buildApiUrl(env), {
+            headers: { "User-Agent": "deadlock-wiki-worker" },
+        });
+        if (!upstream.ok) {
+            console.error(`recent-changes: api.php returned ${upstream.status}`);
+            return null;
+        }
         data = await upstream.json();
-    } catch {
-        return htmlCached ? await htmlCached.text() : null;
+    } catch (err) {
+        console.error("recent-changes: api.php request failed:", err);
+        return null;
     }
 
-    const now = Date.now();
     const innerHtml = renderWidgetItems(data?.query?.recentchanges ?? []);
 
-    await cache.put(
+    const put = cache.put(
         cacheKey,
         new Response(innerHtml, {
             headers: {
                 "Content-Type": "text/html; charset=utf-8",
                 "Cache-Control": "max-age=31536000",
-                "X-Cached-At": String(now),
+                "X-Cached-At": String(Date.now()),
             },
         })
     );
+    if (ctx) {
+        ctx.waitUntil(put);
+    } else {
+        await put;
+    }
 
     return innerHtml;
 }
@@ -61,6 +78,8 @@ function buildApiUrl(env) {
     api.searchParams.set("rcprop", "title|timestamp|user|ids|flags");
     api.searchParams.set("rctype", "edit|new");
     api.searchParams.set("rcnamespace", "0");
+    // Only the latest revision per page, so one page edited repeatedly takes one slot
+    api.searchParams.set("rctoponly", "1");
     api.searchParams.set("rclimit", String(LIMIT));
     api.searchParams.set("format", "json");
     return api.toString();
@@ -94,23 +113,41 @@ function renderWidgetItems(items) {
     return html;
 }
 
+// Port of mw.util.wikiUrlencode: encodes ?, #, % etc. but keeps : and / readable
+function wikiUrlencode(str) {
+    return encodeURIComponent(String(str || "").replace(/ /g, "_"))
+        .replace(/%3B/g, ";")
+        .replace(/%40/g, "@")
+        .replace(/%24/g, "$")
+        .replace(/%21/g, "!")
+        .replace(/%2A/g, "*")
+        .replace(/%28/g, "(")
+        .replace(/%29/g, ")")
+        .replace(/%2C/g, ",")
+        .replace(/%2F/g, "/")
+        .replace(/%7E/g, "~")
+        .replace(/%3A/g, ":");
+}
+
 function getPageUrl(title) {
-    return "/" + String(title || "").replace(/ /g, "_");
+    return "/" + wikiUrlencode(title);
 }
 
 function getContributionsUrl(user) {
-    return "/Special:Contributions/" + String(user || "").replace(/ /g, "_");
+    return "/Special:Contributions/" + wikiUrlencode(user);
 }
 
 function getDiffUrl(item) {
     if (item && item.revid) {
-        return "/Special:Diff/" + item.revid;
+        return "/Special:Diff/" + encodeURIComponent(String(item.revid));
     }
     return "/Special:RecentChanges";
 }
 
 function formatRelativeTime(timestamp) {
     const then = new Date(timestamp).getTime();
+    if (!Number.isFinite(then)) return "";
+
     const now = Date.now();
     const diffSeconds = Math.round((now - then) / 1000);
     const abs = Math.abs(diffSeconds);

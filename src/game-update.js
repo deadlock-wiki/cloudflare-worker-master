@@ -1,7 +1,32 @@
+import { DurableObject } from "cloudflare:workers";
+
+const STATE_KEY = 'last_hash';
+
+/**
+ * Holds the last dispatched commit hash. A single named Durable Object instance is strongly
+ * consistent across all Cloudflare locations, unlike KV whose reads can be up to 60s stale
+ * (which let consecutive cron runs in different colos dispatch Deadbot twice).
+ */
+export class GameUpdateState extends DurableObject {
+    async getHash() {
+        let hash = await this.ctx.storage.get(STATE_KEY);
+        if (hash === undefined) {
+            // One-time migration from the previous KV-based state
+            hash = (await this.env.GAME_UPDATE_STATE?.get(STATE_KEY)) ?? null;
+            await this.ctx.storage.put(STATE_KEY, hash);
+        }
+        return hash;
+    }
+
+    async setHash(hash) {
+        await this.ctx.storage.put(STATE_KEY, hash);
+    }
+}
+
 export async function checkGameUpdate(env) {
     const latestHash = await getLatestHash(env.DEADBOT_GH_TOKEN);
-    const state = env.GAME_UPDATE_STATE;
-    const previousHash = await state.get('last_hash');
+    const state = env.GAME_UPDATE_DO.get(env.GAME_UPDATE_DO.idFromName('singleton'));
+    const previousHash = await state.getHash();
 
     if (latestHash === previousHash) {
         console.info('Latest hash has not changed');
@@ -10,7 +35,7 @@ export async function checkGameUpdate(env) {
 
     console.info(`New hash ${latestHash} found, dispatching Deadbot`)
     await dispatchDeadbot(env.DEADBOT_GH_TOKEN);
-    await state.put('last_hash', latestHash);
+    await state.setHash(latestHash);
     console.info('✅ Done!')
 }
 
