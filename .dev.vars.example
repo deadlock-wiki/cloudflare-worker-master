@@ -1,1 +1,3 @@
 DEADBOT_GH_TOKEN=<insert gh token>
+# Optional: upstream host for local dev that bypasses the deployed worker
+# DEV_UPSTREAM_HOST=origin.deadlock.wiki

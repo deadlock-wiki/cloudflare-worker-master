@@ -9,8 +9,10 @@ export default {
         let finalRequest = request;
 
         // LOCAL DEV SHIELD
+        // DEV_UPSTREAM_HOST (in .dev.vars) can point at a hostname with no Worker route, so the
+        // deployed worker does not also rewrite the HTML during local testing.
         if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-            url.hostname = "deadlock.wiki";
+            url.hostname = env.DEV_UPSTREAM_HOST || "deadlock.wiki";
             url.protocol = "https:";
             url.port = "";
             finalRequest = new Request(url, request);
