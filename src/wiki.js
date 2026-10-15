@@ -1,7 +1,6 @@
 import { getRecentChangesHTML } from "./recent-changes.js";
 import { applyThemeRewriter } from "./theme-cookies.js";
 import { applyFeedbackRewriter } from "./feedback.js";
-import { applySbGateRewriter, shouldTrimSbGate } from "./sb-gate.js";
 
 // Paths that are never wiki page views. Static assets keep the origin's own caching headers.
 const NON_PAGE_PREFIXES = [
@@ -192,15 +191,6 @@ export async function handleWikiRequest(request, env, ctx) {
         applyFeedbackRewriter(rewriter, getTalkEditHref(url));
     } catch (err) {
         console.error("feedback rewriter failed:", err);
-    }
-
-    // Only for anonymous (edge-cached) page views: the lazy-load fetch is then an edge cache hit
-    if (shouldCache && shouldTrimSbGate(request, url)) {
-        try {
-            applySbGateRewriter(rewriter);
-        } catch (err) {
-            console.error("sb-gate rewriter failed:", err);
-        }
     }
 
     if (widgetHtml) {
