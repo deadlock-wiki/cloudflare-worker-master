@@ -57,7 +57,10 @@ function getPageTitle(url) {
     if (NON_PAGE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return null;
 
     if (pathname === "/index.php") {
-        return safeDecode(url.searchParams.get("title") || "Main_Page");
+        const title = url.searchParams.get("title");
+        if (title) return safeDecode(title);
+        // Only default to Main_Page when there are no other query parameters (e.g. not ?curid= or ?diff=)
+        return url.search === "" ? "Main_Page" : null;
     }
     if (PHP_ENTRYPOINT.test(pathname)) return null;
     if (pathname === "/") return "Main_Page";
@@ -77,6 +80,16 @@ function isSpecialTitle(title) {
     return title.replace(/^\s+/, "").toLowerCase().startsWith("special:");
 }
 
+function hasOnlyViewParams(url) {
+    if (url.search === "") return true;
+    for (const [key, value] of url.searchParams) {
+        if (key === "title" && url.pathname === "/index.php") continue;
+        if (key === "action" && value === "view") continue;
+        return false;
+    }
+    return true;
+}
+
 function isCacheableRequest(request, url) {
     if (request.method !== "GET" && request.method !== "HEAD") return false;
     if (request.headers.has("Authorization")) return false;
@@ -84,9 +97,8 @@ function isCacheableRequest(request, url) {
     const title = getPageTitle(url);
     if (title === null || isSpecialTitle(title)) return false;
 
-    // Only plain page views (no action, or action=view)
-    const action = url.searchParams.get("action");
-    if (action !== null && action !== "view") return false;
+    // Only plain page views (no ?diff=, ?oldid=, ?veaction=, ?redirect=no, etc.)
+    if (!hasOnlyViewParams(url)) return false;
 
     // Logged-in users and anonymous users with a session (e.g. after an anon edit)
     if (hasSessionCookie(request)) return false;
@@ -131,10 +143,16 @@ export async function handleWikiRequest(request, env, ctx) {
         });
     }
 
+    const isPageRequest = getPageTitle(url) !== null;
     const shouldCache = isCacheableRequest(request, url);
 
-    // Fetch origin (apply Cloudflare edge cache configuration ONLY if request is eligible).
-    // Responses carrying Set-Cookie are bypassed by Cloudflare's cache automatically.
+    // Fetch origin:
+    // - Eligible anonymous page views: cache at the Cloudflare edge for 300s.
+    // - Non-cacheable page/script requests (logged-in users, Special:, ?diff=, ?action=edit, api.php):
+    //   force cacheEverything: false and cacheTtl: -1 so an existing anonymous edge cache entry
+    //   (or MediaWiki's s-maxage=18000 header) never serves a logged-out cached page to a logged-in user.
+    // - Static assets (/images/, /resources/, /skins/, /extensions/): leave default cf behavior so
+    //   Cloudflare respects MediaWiki's static asset cache headers.
     const fetchOptions = shouldCache
         ? {
               cf: {
@@ -143,17 +161,23 @@ export async function handleWikiRequest(request, env, ctx) {
                   cacheTags: getCacheTags(url),
               },
           }
-        : {};
+        : isPageRequest || PHP_ENTRYPOINT.test(url.pathname)
+          ? {
+                cf: {
+                    cacheEverything: false,
+                    cacheTtl: -1,
+                },
+            }
+          : {};
 
     // Start the widget lookup in parallel with the origin fetch; it is only awaited if the
     // response turns out to be HTML. Skipped for asset/entrypoint requests.
-    const widgetPromise =
-        getPageTitle(url) !== null
-            ? getRecentChangesHTML(env, ctx).catch((err) => {
-                  console.error("recent-changes widget failed:", err);
-                  return null;
-              })
-            : Promise.resolve(null);
+    const widgetPromise = isPageRequest
+        ? getRecentChangesHTML(env, ctx).catch((err) => {
+              console.error("recent-changes widget failed:", err);
+              return null;
+          })
+        : Promise.resolve(null);
 
     let originResponse;
     try {
