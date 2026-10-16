@@ -2,9 +2,6 @@ name = 'master'
 main = "src/master-worker.js"
 compatibility_date = "2026-06-18"
 
-# Only reachable through the zone routes; not on *.workers.dev
-workers_dev = false
-
 # Routes are currently managed in the Cloudflare dashboard. Declare them here so deploys are
 # reproducible, e.g.:
 # routes = [{ pattern = "deadlock.wiki/*", zone_name = "deadlock.wiki" }]
