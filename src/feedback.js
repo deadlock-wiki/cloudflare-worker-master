@@ -36,6 +36,61 @@ body.ns-0 .fb-button {
     text-decoration: none;
 }
 
+.feedback-box {
+    margin: 0.8em 0;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color-subtle);
+    background: var(--background-color-neutral-subtle);
+    color: var(--color-base);
+}
+.feedback-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.65em;
+    font-size: 0.85rem;
+    color: var(--color-subtle);
+}
+.feedback-user {
+    font-weight: 700;
+    color: var(--color-emphasized);
+}
+.feedback-separator {
+    opacity: 0.7;
+}
+.feedback-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+}
+.feedback-status--unresolved {
+    color: white;
+    background: var(--color-destructive);
+    border-color: var(--color-destructive);
+}
+.feedback-status--resolved {
+    color: white;
+    background: var(--color-content-added);
+    border-color: var(--color-content-added);
+}
+.feedback-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+    font-size: 0.95rem;
+    color: var(--color-base);
+}
+.feedback-instruction {
+    font-size: 13px;
+    display: block;
+    opacity: 0.7;
+}
+
 .fb-dialog {
     width: min(640px, calc(100vw - 32px));
     max-height: calc(100vh - 32px);
