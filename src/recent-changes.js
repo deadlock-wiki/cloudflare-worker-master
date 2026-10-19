@@ -1,41 +1,87 @@
 const LIMIT = 4;
-const TTL_MS = 60 * 1000;
-const HTML_CACHE_KEY = "https://rc-cache.local/recentchanges.html";
+const KV_KEY = "recentchanges";
+// Per-data-center copy in front of KV. The Cache API is free, KV reads are billed per call.
+const EDGE_TTL_MS = 60 * 1000;
+// Per-isolate copy, so hot isolates skip even the Cache API lookup.
+const MEMORY_TTL_MS = 10 * 1000;
+// KV's own edge cache. 30s is the minimum KV allows.
+const KV_CACHE_TTL_S = 30;
+const EDGE_CACHE_KEY = "https://rc-cache.local/recentchanges.json";
+
+let memory = null; // { items, at }
 
 /**
- * Returns the widget HTML. Serves the cached copy immediately and, when it is older than
- * TTL_MS, refreshes it in the background (stale-while-revalidate) so page requests never
- * wait on api.php once the cache is warm.
+ * Called by the cron every minute: the only place that queries api.php. Page views read the
+ * stored items, so they never wait on (or stampede) the origin.
  */
-export async function getRecentChangesHTML(env, ctx) {
-    const cache = await caches.open("recent-changes-cache");
-    const cacheKey = new Request(HTML_CACHE_KEY);
-
-    const htmlCached = await cache.match(cacheKey);
-    if (htmlCached) {
-        const cachedAt = Number(htmlCached.headers.get("X-Cached-At") || 0);
-        const html = await htmlCached.text();
-        const isStale = !cachedAt || Date.now() - cachedAt >= TTL_MS;
-
-        if (isStale) {
-            const refresh = refreshCache(env, cache, cacheKey, ctx);
-            if (ctx) {
-                ctx.waitUntil(refresh);
-            } else {
-                await refresh;
-            }
-        }
-        return html;
-    }
-
-    // Cold cache: nothing to serve yet, so wait for the first build.
-    return await refreshCache(env, cache, cacheKey, ctx);
+export async function refreshRecentChanges(env) {
+    if (!env.RC_CACHE) throw new Error("RC_CACHE KV binding missing");
+    const items = await fetchItems(env);
+    if (!items) return;
+    await env.RC_CACHE.put(KV_KEY, JSON.stringify(items));
 }
 
-async function refreshCache(env, cache, cacheKey, ctx) {
+/**
+ * Returns the widget HTML, or null when no data is available (the page then keeps the
+ * sidebar's default content). Times are rendered per request, so "3m ago" stays accurate
+ * however old the stored copy is.
+ */
+export async function getRecentChangesHTML(env, ctx) {
+    const items = await getItems(env, ctx);
+    return items ? renderWidgetItems(items) : null;
+}
+
+async function getItems(env, ctx) {
+    const now = Date.now();
+    if (memory && now - memory.at < MEMORY_TTL_MS) return memory.items;
+
+    // Local dev without the KV binding: query api.php directly.
+    if (!env.RC_CACHE) return await fetchItems(env);
+
+    const cache = await caches.open("recent-changes-cache");
+    const cacheKey = new Request(EDGE_CACHE_KEY);
+
+    let stale = null;
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+        const cachedAt = Number(cached.headers.get("X-Cached-At") || 0);
+        const items = await cached.json();
+        if (now - cachedAt < EDGE_TTL_MS) {
+            memory = { items, at: now };
+            return items;
+        }
+        stale = items;
+    }
+
+    try {
+        const items = await env.RC_CACHE.get(KV_KEY, { type: "json", cacheTtl: KV_CACHE_TTL_S });
+        if (items) {
+            memory = { items, at: now };
+            const put = cache.put(
+                cacheKey,
+                new Response(JSON.stringify(items), {
+                    headers: {
+                        "Content-Type": "application/json",
+                        // Kept long so a stale copy survives a KV outage; freshness is X-Cached-At.
+                        "Cache-Control": "max-age=86400",
+                        "X-Cached-At": String(now),
+                    },
+                })
+            );
+            if (ctx) ctx.waitUntil(put);
+            else await put;
+            return items;
+        }
+    } catch (err) {
+        console.error("recent-changes: KV read failed:", err);
+    }
+
+    return stale;
+}
+
+async function fetchItems(env) {
     if (!env || !env.MEDIAWIKI_API) return null;
 
-    let data;
     try {
         const upstream = await fetch(buildApiUrl(env), {
             headers: { "User-Agent": "deadlock-wiki-worker" },
@@ -44,31 +90,12 @@ async function refreshCache(env, cache, cacheKey, ctx) {
             console.error(`recent-changes: api.php returned ${upstream.status}`);
             return null;
         }
-        data = await upstream.json();
+        const data = await upstream.json();
+        return data?.query?.recentchanges ?? [];
     } catch (err) {
         console.error("recent-changes: api.php request failed:", err);
         return null;
     }
-
-    const innerHtml = renderWidgetItems(data?.query?.recentchanges ?? []);
-
-    const put = cache.put(
-        cacheKey,
-        new Response(innerHtml, {
-            headers: {
-                "Content-Type": "text/html; charset=utf-8",
-                "Cache-Control": "max-age=31536000",
-                "X-Cached-At": String(Date.now()),
-            },
-        })
-    );
-    if (ctx) {
-        ctx.waitUntil(put);
-    } else {
-        await put;
-    }
-
-    return innerHtml;
 }
 
 function buildApiUrl(env) {
