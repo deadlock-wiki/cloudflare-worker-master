@@ -1,5 +1,6 @@
 import { handleWikiRequest } from "./wiki.js";
 import { checkGameUpdate } from './game-update.js'
+import { refreshRecentChanges } from './recent-changes.js'
 
 export { GameUpdateState } from './game-update.js'
 
@@ -26,6 +27,13 @@ export default {
             checkGameUpdate(eventEnv).catch((err) => {
                 const errorMessage = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
                 console.error(`game-update failed: ${errorMessage}`);
+            })
+        );
+        ctx.waitUntil(
+            refreshRecentChanges(eventEnv).catch((err) => {
+                const errorMessage = err instanceof Error ? `${err.message}
+${err.stack}` : String(err);
+                console.error(`recent-changes refresh failed: ${errorMessage}`);
             })
         );
     },

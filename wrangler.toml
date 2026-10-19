@@ -21,6 +21,11 @@ crons = ["*/1 * * * *"]
 binding = "GAME_UPDATE_STATE"
 id = "3477cc58e1214dbb93c0804b9e31ea41"
 
+# Recent-changes widget data, written by the cron every minute and read by page views
+[[kv_namespaces]]
+binding = "RC_CACHE"
+id = "1e8dd52a66f443e1afa7d7dda8447633"
+
 [[durable_objects.bindings]]
 name = "GAME_UPDATE_DO"
 class_name = "GameUpdateState"
