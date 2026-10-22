@@ -5,6 +5,7 @@ const VALID_MODES = ["light", "dark"];
 const TOKEN_PATTERN = /^[a-z0-9-]+$/;
 const USERICON_COOKIE = "usericon";
 const USERICON_PATTERN = /^[a-z0-9-]{1,64}$/;
+const DEFAULT_USERICON = "abrams";
 
 const BFCACHE_SCRIPT = `
       <script>
@@ -19,12 +20,9 @@ const BFCACHE_SCRIPT = `
             document.documentElement.setAttribute('data-theme', theme);
             document.documentElement.setAttribute('data-mode', mode);
 
-            const usericon = getCookie('usericon');
-            if (usericon) {
-              document.documentElement.setAttribute('data-usericon', usericon);
-            } else {
-              document.documentElement.removeAttribute('data-usericon');
-            }
+            const rawUsericon = getCookie('usericon');
+            const usericon = /^[a-z0-9-]{1,64}$/.test(rawUsericon || '') ? rawUsericon : '${DEFAULT_USERICON}';
+            document.documentElement.setAttribute('data-usericon', usericon);
             
             // Sync layout changes on history traversal
             const fixedWidth = getCookie('fixedWidth') || '1';
@@ -140,7 +138,9 @@ function resolveMode(rawMode) {
   const mode = sanitizeToken(rawMode);
   return VALID_MODES.includes(mode) ? mode : DEFAULT_MODE;
 }
-function resolveUserIcon(rawUsericon) { return sanitizeToken(rawUsericon, USERICON_PATTERN); }
+function resolveUserIcon(rawUsericon) {
+  return sanitizeToken(rawUsericon, USERICON_PATTERN) || DEFAULT_USERICON;
+}
 
 export function applyThemeRewriter(rewriter, request) {
   const cookieHeader = request.headers.get("Cookie") || "";
@@ -167,10 +167,7 @@ export function applyThemeRewriter(rewriter, request) {
         element(el) {
           el.setAttribute("data-theme", theme);
           el.setAttribute("data-mode", mode);
-
-          if (usericon) {
-            el.setAttribute("data-usericon", usericon);
-          }
+          el.setAttribute("data-usericon", usericon);
 
           // Append layout styling directly onto the root HTML element server-side
           const existingStyle = (el.getAttribute("style") || "").trim().replace(/;?$/, "");
@@ -187,7 +184,6 @@ export function applyThemeRewriter(rewriter, request) {
         // :root[data-usericon] in the stylesheet, so the element carries no
         // icon state of its own.
         element(el) {
-          if (!usericon) return;
           el.prepend(`<span class="usericon-avatar"></span>`, { html: true });
         },
       })
