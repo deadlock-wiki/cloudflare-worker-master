@@ -3,6 +3,8 @@ const DEFAULT_MODE = "dark";
 const VALID_MODES = ["light", "dark"];
 
 const TOKEN_PATTERN = /^[a-z0-9-]+$/;
+const USERICON_COOKIE = "usericon";
+const USERICON_PATTERN = /^[a-z0-9-]{1,64}$/;
 
 const BFCACHE_SCRIPT = `
       <script>
@@ -16,6 +18,13 @@ const BFCACHE_SCRIPT = `
             const mode = getCookie('mode') || '${DEFAULT_MODE}';
             document.documentElement.setAttribute('data-theme', theme);
             document.documentElement.setAttribute('data-mode', mode);
+
+            const usericon = getCookie('usericon');
+            if (usericon) {
+              document.documentElement.setAttribute('data-usericon', usericon);
+            } else {
+              document.documentElement.removeAttribute('data-usericon');
+            }
             
             // Sync layout changes on history traversal
             const fixedWidth = getCookie('fixedWidth') || '1';
@@ -117,8 +126,8 @@ function parseCookies(cookieHeader) {
   return out;
 }
 
-function sanitizeToken(value) {
-  if (typeof value !== "string" || !value || !TOKEN_PATTERN.test(value)) return null;
+function sanitizeToken(value, pattern = TOKEN_PATTERN) {
+  if (typeof value !== "string" || !value || !pattern.test(value)) return null;
   return value;
 }
 
@@ -131,6 +140,7 @@ function resolveMode(rawMode) {
   const mode = sanitizeToken(rawMode);
   return VALID_MODES.includes(mode) ? mode : DEFAULT_MODE;
 }
+function resolveUserIcon(rawUsericon) { return sanitizeToken(rawUsericon, USERICON_PATTERN); }
 
 export function applyThemeRewriter(rewriter, request) {
   const cookieHeader = request.headers.get("Cookie") || "";
@@ -138,6 +148,7 @@ export function applyThemeRewriter(rewriter, request) {
 
   const theme = resolveTheme(cookies.theme);
   const mode = resolveMode(cookies.mode);
+  const usericon = resolveUserIcon(cookies[USERICON_COOKIE]);
 
   // Read fixedWidth layout rule from cookies
   const isFixedWidth = cookies.fixedWidth !== "0";
@@ -157,6 +168,10 @@ export function applyThemeRewriter(rewriter, request) {
           el.setAttribute("data-theme", theme);
           el.setAttribute("data-mode", mode);
 
+          if (usericon) {
+            el.setAttribute("data-usericon", usericon);
+          }
+
           // Append layout styling directly onto the root HTML element server-side
           const existingStyle = (el.getAttribute("style") || "").trim().replace(/;?$/, "");
           el.setAttribute("style", `${existingStyle ? existingStyle + "; " : ""}--fixed-width: ${fixedWidthValue};`);
@@ -165,6 +180,15 @@ export function applyThemeRewriter(rewriter, request) {
       .on("head", {
         element(el) {
           el.append(BFCACHE_SCRIPT + CRITICAL_CSS, { html: true });
+        },
+      })
+      .on("#p-userpage a", {
+        // Only logged-in users have a username link. The icon itself comes from
+        // :root[data-usericon] in the stylesheet, so the element carries no
+        // icon state of its own.
+        element(el) {
+          if (!usericon) return;
+          el.prepend(`<span class="usericon-avatar"></span>`, { html: true });
         },
       })
       .on("#p-personal ul", {
