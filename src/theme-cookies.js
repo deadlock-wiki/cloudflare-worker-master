@@ -179,7 +179,7 @@ export function applyThemeRewriter(rewriter, request) {
           el.append(BFCACHE_SCRIPT + CRITICAL_CSS, { html: true });
         },
       })
-      .on("#p-userpage a", {
+      .on("#pt-userpage a", {
         // Only logged-in users have a username link. The icon itself comes from
         // :root[data-usericon] in the stylesheet, so the element carries no
         // icon state of its own.
