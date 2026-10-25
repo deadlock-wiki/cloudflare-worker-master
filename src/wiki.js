@@ -1,6 +1,5 @@
 import { getRecentChangesHTML } from "./recent-changes.js";
 import { applyThemeRewriter } from "./theme-cookies.js";
-import { applyFeedbackRewriter } from "./feedback.js";
 
 // Paths that are never wiki page views. Static assets keep the origin's own caching headers.
 const NON_PAGE_PREFIXES = [
@@ -66,14 +65,6 @@ function getPageTitle(url) {
     if (pathname === "/") return "Main_Page";
 
     return safeDecode(pathname.slice(1));
-}
-
-// No-JS fallback for the feedback button: the talk page's "add section" form
-function getTalkEditHref(url) {
-    const title = getPageTitle(url);
-    if (!title || title.includes(":")) return null;
-    const params = new URLSearchParams({ title: "Talk:" + title, action: "edit", section: "new" });
-    return "/index.php?" + params.toString();
 }
 
 function isSpecialTitle(title) {
@@ -209,12 +200,6 @@ export async function handleWikiRequest(request, env, ctx) {
         applyThemeRewriter(rewriter, request);
     } catch (err) {
         console.error("theme rewriter failed:", err);
-    }
-
-    try {
-        applyFeedbackRewriter(rewriter, getTalkEditHref(url));
-    } catch (err) {
-        console.error("feedback rewriter failed:", err);
     }
 
     if (widgetHtml) {
