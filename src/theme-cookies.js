@@ -1,6 +1,6 @@
 const DEFAULT_THEME = "brown";
-const DEFAULT_MODE = "auto";
-const VALID_MODES = ["light", "dark", "auto"];
+const DEFAULT_MODE = "dark";
+const VALID_MODES = ["light", "dark"];
 
 const TOKEN_PATTERN = /^[a-z0-9-]+$/;
 const USERICON_COOKIE = "usericon";
@@ -8,9 +8,8 @@ const USERICON_PATTERN = /^[a-z0-9-]{1,64}$/;
 const DEFAULT_USERICON = "abrams";
 
 const MODE_LABELS = {
-  auto: "Theme: Auto (switch to light)",
-  light: "Theme: Light (switch to dark)",
-  dark: "Theme: Dark (switch to auto)",
+  light: "Switch to dark theme",
+  dark: "Switch to light theme",
 };
 
 const BOOTSTRAP_SCRIPT = `
@@ -23,7 +22,6 @@ const BOOTSTRAP_SCRIPT = `
           var TOKEN_RE = /^[a-z0-9-]+$/;
           var USERICON_RE = /^[a-z0-9-]{1,64}$/;
           var MODE_LABELS = ${JSON.stringify(MODE_LABELS)};
-          var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
           function getCookie(name) {
             var match = document.cookie.match(new RegExp('(?:^|;\\\\s*)' + name + '=([^;]+)'));
@@ -36,15 +34,11 @@ const BOOTSTRAP_SCRIPT = `
             document.cookie = name + '=' + encodeURIComponent(value) + '; Path=/; Max-Age=31536000; SameSite=Lax' + secure;
           }
 
-          function resolveAutoMode() {
-            return mq && !mq.matches ? 'light' : 'dark';
-          }
-
           function syncLabels() {
-            var pref = root.getAttribute('data-mode-pref') || DEFAULT_MODE;
+            var mode = root.getAttribute('data-mode') === 'light' ? 'light' : DEFAULT_MODE;
             var themeLink = document.querySelector('#pt-theme-toggle a');
             if (themeLink) {
-              var themeLabel = MODE_LABELS[pref] || MODE_LABELS[DEFAULT_MODE];
+              var themeLabel = MODE_LABELS[mode] || MODE_LABELS[DEFAULT_MODE];
               themeLink.setAttribute('aria-label', themeLabel);
               themeLink.setAttribute('title', themeLabel);
             }
@@ -62,8 +56,7 @@ const BOOTSTRAP_SCRIPT = `
             var theme = rawTheme && TOKEN_RE.test(rawTheme) ? rawTheme : DEFAULT_THEME;
 
             var rawMode = getCookie('mode');
-            var modePref = rawMode === 'light' || rawMode === 'dark' || rawMode === 'auto' ? rawMode : DEFAULT_MODE;
-            var resolvedMode = modePref === 'auto' ? resolveAutoMode() : modePref;
+            var mode = rawMode === 'light' || rawMode === 'dark' ? rawMode : DEFAULT_MODE;
 
             var rawUsericon = getCookie('${USERICON_COOKIE}');
             var usericon = rawUsericon && USERICON_RE.test(rawUsericon) ? rawUsericon : DEFAULT_USERICON;
@@ -71,8 +64,7 @@ const BOOTSTRAP_SCRIPT = `
             var fixedWidth = getCookie('fixedWidth') === '0' ? '0' : '1';
 
             root.setAttribute('data-theme', theme);
-            root.setAttribute('data-mode-pref', modePref);
-            root.setAttribute('data-mode', resolvedMode);
+            root.setAttribute('data-mode', mode);
             root.setAttribute('data-usericon', usericon);
             root.setAttribute('data-fixed-width', fixedWidth);
             root.style.removeProperty('--fixed-width');
@@ -80,16 +72,6 @@ const BOOTSTRAP_SCRIPT = `
           }
 
           syncFromCookies();
-
-          if (mq) {
-            var onMediaChange = function () {
-              if (root.getAttribute('data-mode-pref') === 'auto') {
-                root.setAttribute('data-mode', resolveAutoMode());
-              }
-            };
-            if (mq.addEventListener) mq.addEventListener('change', onMediaChange);
-            else if (mq.addListener) mq.addListener(onMediaChange);
-          }
 
           window.addEventListener('pageshow', function (event) {
             if (event.persisted) syncFromCookies();
@@ -105,8 +87,8 @@ const BOOTSTRAP_SCRIPT = `
             if (event.stopImmediatePropagation) event.stopImmediatePropagation();
 
             if (el.closest('#pt-theme-toggle')) {
-              var cur = root.getAttribute('data-mode-pref') || DEFAULT_MODE;
-              var next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto';
+              var cur = root.getAttribute('data-mode') === 'light' ? 'light' : DEFAULT_MODE;
+              var next = cur === 'light' ? 'dark' : 'light';
               setCookie('mode', next);
               syncFromCookies();
             } else {
@@ -159,21 +141,15 @@ const CRITICAL_CSS = `
           opacity: 1;
         }
 
-        :root[data-mode-pref="light"] #pt-theme-toggle a,
+        :root[data-mode="light"] #pt-theme-toggle a,
         #pt-theme-toggle a.is-light {
           --pt-theme-icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill-rule="evenodd"><path d="M17.07 7.07V2.93h-4.14L10 0 7.07 2.93H2.93v4.14L0 10l2.93 2.93v4.14h4.14L10 20l2.93-2.93h4.14v-4.14L20 10zM10 16a6 6 0 1 1 6-6 6 6 0 0 1-6 6z"/><circle cx="10" cy="10" r="4.5"/></svg>');
           -webkit-mask-image: var(--pt-theme-icon);
           mask-image: var(--pt-theme-icon);
         }
-        :root[data-mode-pref="dark"] #pt-theme-toggle a,
+        :root[data-mode="dark"] #pt-theme-toggle a,
         #pt-theme-toggle a.is-dark {
           --pt-theme-icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill-rule="evenodd"><path d="M 10 0 L 7.0703125 2.9296875 L 2.9296875 2.9296875 L 2.9296875 7.0703125 L 0 10 L 2.9296875 12.929688 L 2.9296875 17.070312 L 7.0703125 17.070312 L 10 20 L 12.929688 17.070312 L 17.070312 17.070312 L 17.070312 12.929688 L 20 10 L 19.238281 9.2382812 A 6.25 6.25 0 0 1 15.570312 12.228516 A 6 6 0 0 1 10 16 A 6 6 0 0 1 7.7714844 4.4296875 A 6.25 6.25 0 0 1 10.761719 0.76171875 L 10 0 z M 7.5 6.2578125 A 4.5 4.5 0 0 0 5.5 10 A 4.5 4.5 0 0 0 10 14.5 A 4.5 4.5 0 0 0 13.742188 12.5 A 6.25 6.25 0 0 1 7.5 6.2578125 z"/></svg>');
-          -webkit-mask-image: var(--pt-theme-icon);
-          mask-image: var(--pt-theme-icon);
-        }
-        :root[data-mode-pref="auto"] #pt-theme-toggle a,
-        #pt-theme-toggle a.is-auto {
-          --pt-theme-icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><path d="M10 1a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2a7 7 0 0 1 0 14V3z"/></svg>');
           -webkit-mask-image: var(--pt-theme-icon);
           mask-image: var(--pt-theme-icon);
         }
@@ -258,22 +234,20 @@ export function applyThemeRewriter(rewriter, request) {
   const cookies = parseCookies(cookieHeader);
 
   const theme = resolveTheme(cookies.theme);
-  const modePref = resolveMode(cookies.mode);
-  const ssrMode = modePref === "auto" ? "dark" : modePref;
+  const mode = resolveMode(cookies.mode);
   const usericon = resolveUserIcon(cookies[USERICON_COOKIE]);
 
   const isFixedWidth = cookies.fixedWidth !== "0";
   const fixedWidthAttr = isFixedWidth ? "1" : "0";
 
-  const themeLabel = MODE_LABELS[modePref];
+  const themeLabel = MODE_LABELS[mode];
   const fixedWidthLabel = isFixedWidth ? "Switch to fullscreen layout" : "Switch to fixed width layout";
 
   rewriter
       .on("html", {
         element(el) {
           el.setAttribute("data-theme", theme);
-          el.setAttribute("data-mode-pref", modePref);
-          el.setAttribute("data-mode", ssrMode);
+          el.setAttribute("data-mode", mode);
           el.setAttribute("data-usericon", usericon);
           el.setAttribute("data-fixed-width", fixedWidthAttr);
         },
