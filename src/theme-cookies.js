@@ -1,39 +1,140 @@
 const DEFAULT_THEME = "brown";
-const DEFAULT_MODE = "dark";
-const VALID_MODES = ["light", "dark"];
+const DEFAULT_MODE = "auto";
+const VALID_MODES = ["light", "dark", "auto"];
 
 const TOKEN_PATTERN = /^[a-z0-9-]+$/;
 const USERICON_COOKIE = "usericon";
 const USERICON_PATTERN = /^[a-z0-9-]{1,64}$/;
 const DEFAULT_USERICON = "abrams";
 
-const BFCACHE_SCRIPT = `
-      <script>
-        window.addEventListener('pageshow', (event) => {
-          if (event.persisted) {
-            const getCookie = (name) => {
-              const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-              return match ? decodeURIComponent(match[2]) : null;
-            };
-            const theme = getCookie('theme') || '${DEFAULT_THEME}';
-            const mode = getCookie('mode') || '${DEFAULT_MODE}';
-            document.documentElement.setAttribute('data-theme', theme);
-            document.documentElement.setAttribute('data-mode', mode);
+const MODE_LABELS = {
+  auto: "Theme: Auto (switch to light)",
+  light: "Theme: Light (switch to dark)",
+  dark: "Theme: Dark (switch to auto)",
+};
 
-            const rawUsericon = getCookie('usericon');
-            const usericon = /^[a-z0-9-]{1,64}$/.test(rawUsericon || '') ? rawUsericon : '${DEFAULT_USERICON}';
-            document.documentElement.setAttribute('data-usericon', usericon);
-            
-            // Sync layout changes on history traversal
-            const fixedWidth = getCookie('fixedWidth') || '1';
-            document.documentElement.style.setProperty('--fixed-width', fixedWidth === '1' ? 'min(1450px, 90vw)' : '100vw');
+const BOOTSTRAP_SCRIPT = `
+      <script>
+        (function () {
+          var root = document.documentElement;
+          var DEFAULT_THEME = '${DEFAULT_THEME}';
+          var DEFAULT_MODE = '${DEFAULT_MODE}';
+          var DEFAULT_USERICON = '${DEFAULT_USERICON}';
+          var TOKEN_RE = /^[a-z0-9-]+$/;
+          var USERICON_RE = /^[a-z0-9-]{1,64}$/;
+          var MODE_LABELS = ${JSON.stringify(MODE_LABELS)};
+          var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+          function getCookie(name) {
+            var match = document.cookie.match(new RegExp('(?:^|;\\\\s*)' + name + '=([^;]+)'));
+            if (!match) return null;
+            try { return decodeURIComponent(match[1]); } catch (e) { return match[1]; }
           }
-        });
+
+          function setCookie(name, value) {
+            var secure = location.protocol === 'https:' ? '; Secure' : '';
+            document.cookie = name + '=' + encodeURIComponent(value) + '; Path=/; Max-Age=31536000; SameSite=Lax' + secure;
+          }
+
+          function resolveAutoMode() {
+            return mq && !mq.matches ? 'light' : 'dark';
+          }
+
+          function syncLabels() {
+            var pref = root.getAttribute('data-mode-pref') || DEFAULT_MODE;
+            var themeLink = document.querySelector('#pt-theme-toggle a');
+            if (themeLink) {
+              var themeLabel = MODE_LABELS[pref] || MODE_LABELS[DEFAULT_MODE];
+              themeLink.setAttribute('aria-label', themeLabel);
+              themeLink.setAttribute('title', themeLabel);
+            }
+            var fw = root.getAttribute('data-fixed-width') || '1';
+            var fwLink = document.querySelector('#pt-fixedwidth-toggle a');
+            if (fwLink) {
+              var fwLabel = fw === '1' ? 'Switch to fullscreen layout' : 'Switch to fixed width layout';
+              fwLink.setAttribute('aria-label', fwLabel);
+              fwLink.setAttribute('title', fwLabel);
+            }
+          }
+
+          function syncFromCookies() {
+            var rawTheme = getCookie('theme');
+            var theme = rawTheme && TOKEN_RE.test(rawTheme) ? rawTheme : DEFAULT_THEME;
+
+            var rawMode = getCookie('mode');
+            var modePref = rawMode === 'light' || rawMode === 'dark' || rawMode === 'auto' ? rawMode : DEFAULT_MODE;
+            var resolvedMode = modePref === 'auto' ? resolveAutoMode() : modePref;
+
+            var rawUsericon = getCookie('${USERICON_COOKIE}');
+            var usericon = rawUsericon && USERICON_RE.test(rawUsericon) ? rawUsericon : DEFAULT_USERICON;
+
+            var fixedWidth = getCookie('fixedWidth') === '0' ? '0' : '1';
+
+            root.setAttribute('data-theme', theme);
+            root.setAttribute('data-mode-pref', modePref);
+            root.setAttribute('data-mode', resolvedMode);
+            root.setAttribute('data-usericon', usericon);
+            root.setAttribute('data-fixed-width', fixedWidth);
+            root.style.removeProperty('--fixed-width');
+            syncLabels();
+          }
+
+          syncFromCookies();
+
+          if (mq) {
+            var onMediaChange = function () {
+              if (root.getAttribute('data-mode-pref') === 'auto') {
+                root.setAttribute('data-mode', resolveAutoMode());
+              }
+            };
+            if (mq.addEventListener) mq.addEventListener('change', onMediaChange);
+            else if (mq.addListener) mq.addListener(onMediaChange);
+          }
+
+          window.addEventListener('pageshow', function (event) {
+            if (event.persisted) syncFromCookies();
+          });
+
+          document.addEventListener('DOMContentLoaded', syncLabels);
+
+          document.addEventListener('click', function (event) {
+            var el = event.target && event.target.closest ? event.target.closest('#pt-theme-toggle a, #pt-fixedwidth-toggle a') : null;
+            if (!el) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+
+            if (el.closest('#pt-theme-toggle')) {
+              var cur = root.getAttribute('data-mode-pref') || DEFAULT_MODE;
+              var next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto';
+              setCookie('mode', next);
+              syncFromCookies();
+            } else {
+              var curFw = root.getAttribute('data-fixed-width') || '1';
+              var nextFw = curFw === '1' ? '0' : '1';
+              setCookie('fixedWidth', nextFw);
+              syncFromCookies();
+            }
+          }, true);
+        })();
       </script>
     `;
 
 const CRITICAL_CSS = `
       <style>
+        :root[data-mode="dark"] {
+          color-scheme: dark;
+        }
+        :root[data-mode="light"] {
+          color-scheme: light;
+        }
+        :root[data-fixed-width="1"] {
+          --fixed-width: min(1450px, 90vw);
+        }
+        :root[data-fixed-width="0"] {
+          --fixed-width: 100vw;
+        }
+
         /* Shared alignment styles to keep your menu neat and consistent */
         #pt-theme-toggle, #pt-fixedwidth-toggle {
           display: inline-block;
@@ -57,14 +158,22 @@ const CRITICAL_CSS = `
         #pt-theme-toggle a:hover {
           opacity: 1;
         }
-        
+
+        :root[data-mode-pref="light"] #pt-theme-toggle a,
         #pt-theme-toggle a.is-light {
           --pt-theme-icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill-rule="evenodd"><path d="M17.07 7.07V2.93h-4.14L10 0 7.07 2.93H2.93v4.14L0 10l2.93 2.93v4.14h4.14L10 20l2.93-2.93h4.14v-4.14L20 10zM10 16a6 6 0 1 1 6-6 6 6 0 0 1-6 6z"/><circle cx="10" cy="10" r="4.5"/></svg>');
           -webkit-mask-image: var(--pt-theme-icon);
           mask-image: var(--pt-theme-icon);
         }
+        :root[data-mode-pref="dark"] #pt-theme-toggle a,
         #pt-theme-toggle a.is-dark {
           --pt-theme-icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill-rule="evenodd"><path d="M 10 0 L 7.0703125 2.9296875 L 2.9296875 2.9296875 L 2.9296875 7.0703125 L 0 10 L 2.9296875 12.929688 L 2.9296875 17.070312 L 7.0703125 17.070312 L 10 20 L 12.929688 17.070312 L 17.070312 17.070312 L 17.070312 12.929688 L 20 10 L 19.238281 9.2382812 A 6.25 6.25 0 0 1 15.570312 12.228516 A 6 6 0 0 1 10 16 A 6 6 0 0 1 7.7714844 4.4296875 A 6.25 6.25 0 0 1 10.761719 0.76171875 L 10 0 z M 7.5 6.2578125 A 4.5 4.5 0 0 0 5.5 10 A 4.5 4.5 0 0 0 10 14.5 A 4.5 4.5 0 0 0 13.742188 12.5 A 6.25 6.25 0 0 1 7.5 6.2578125 z"/></svg>');
+          -webkit-mask-image: var(--pt-theme-icon);
+          mask-image: var(--pt-theme-icon);
+        }
+        :root[data-mode-pref="auto"] #pt-theme-toggle a,
+        #pt-theme-toggle a.is-auto {
+          --pt-theme-icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><path d="M10 1a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2a7 7 0 0 1 0 14V3z"/></svg>');
           -webkit-mask-image: var(--pt-theme-icon);
           mask-image: var(--pt-theme-icon);
         }
@@ -88,8 +197,9 @@ const CRITICAL_CSS = `
         #pt-fixedwidth-toggle a:hover {
           opacity: 1;
         }
-        
+
         /* Fixed-width (Constrained state) */
+        :root[data-fixed-width="1"] #pt-fixedwidth-toggle a,
         #pt-fixedwidth-toggle a.is-fixed {
           --pt-width-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Ctitle%3E fullscreen %3C/title%3E%3Cg fill='%23cbd9f4'%3E%3Cpath d='M1 1v6h2V3h4V1zm2 12H1v6h6v-2H3zm14 4h-4v2h6v-6h-2zm0-16h-4v2h4v4h2V1z'/%3E%3C/g%3E%3C/svg%3E");
           -webkit-mask-image: var(--pt-width-icon);
@@ -97,6 +207,7 @@ const CRITICAL_CSS = `
         }
 
         /* Fullscreen (Expanded state) */
+        :root[data-fixed-width="0"] #pt-fixedwidth-toggle a,
         #pt-fixedwidth-toggle a.is-fullscreen {
           --pt-width-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Ctitle%3E exit fullscreen %3C/title%3E%3Cg fill='%23cbd9f4'%3E%3Cpath d='M7 7V1H5v4H1v2zM5 19h2v-6H1v2h4zm10-4h4v-2h-6v6h2zm0-8h4V5h-4V1h-2v6z'/%3E%3C/g%3E%3C/svg%3E");
           -webkit-mask-image: var(--pt-width-icon);
@@ -147,36 +258,34 @@ export function applyThemeRewriter(rewriter, request) {
   const cookies = parseCookies(cookieHeader);
 
   const theme = resolveTheme(cookies.theme);
-  const mode = resolveMode(cookies.mode);
+  const modePref = resolveMode(cookies.mode);
+  const ssrMode = modePref === "auto" ? "dark" : modePref;
   const usericon = resolveUserIcon(cookies[USERICON_COOKIE]);
 
-  // Read fixedWidth layout rule from cookies
   const isFixedWidth = cookies.fixedWidth !== "0";
-  const fixedWidthValue = isFixedWidth ? "min(1450px, 90vw)" : "100vw";
+  const fixedWidthAttr = isFixedWidth ? "1" : "0";
 
-  // Pre-calculate theme classes and titles to match gadget definitions
-  const themeClass = mode === "light" ? "is-light" : "is-dark";
-  const themeLabel = mode === "light" ? "Switch to dark theme" : "Switch to light theme";
-
-  // Pre-calculate fixed-width classes and access labels to match vector schemas
-  const fixedWidthClass = isFixedWidth ? "is-fixed" : "is-fullscreen";
+  const themeLabel = MODE_LABELS[modePref];
   const fixedWidthLabel = isFixedWidth ? "Switch to fullscreen layout" : "Switch to fixed width layout";
 
   rewriter
       .on("html", {
         element(el) {
           el.setAttribute("data-theme", theme);
-          el.setAttribute("data-mode", mode);
+          el.setAttribute("data-mode-pref", modePref);
+          el.setAttribute("data-mode", ssrMode);
           el.setAttribute("data-usericon", usericon);
-
-          // Append layout styling directly onto the root HTML element server-side
-          const existingStyle = (el.getAttribute("style") || "").trim().replace(/;?$/, "");
-          el.setAttribute("style", `${existingStyle ? existingStyle + "; " : ""}--fixed-width: ${fixedWidthValue};`);
+          el.setAttribute("data-fixed-width", fixedWidthAttr);
         },
       })
       .on("head", {
         element(el) {
-          el.append(BFCACHE_SCRIPT + CRITICAL_CSS, { html: true });
+          el.prepend(BOOTSTRAP_SCRIPT + CRITICAL_CSS, { html: true });
+        },
+      })
+      .on("#pt-theme-toggle, #pt-fixedwidth-toggle", {
+        element(el) {
+          el.remove();
         },
       })
       .on("#pt-userpage a", {
@@ -189,11 +298,11 @@ export function applyThemeRewriter(rewriter, request) {
       })
       .on("#p-personal ul", {
         element(el) {
-          const themeToggleHtml = `<li id="pt-theme-toggle"><a href="#" class="${themeClass}" aria-label="${themeLabel}" title="${themeLabel}"></a></li>`;
-          const fixedWidthToggleHtml = `<li id="pt-fixedwidth-toggle"><a href="#" class="${fixedWidthClass}" aria-label="${fixedWidthLabel}" title="${fixedWidthLabel}"></a></li>`;
-          
+          const themeToggleHtml = `<li id="pt-theme-toggle"><a href="#" aria-label="${themeLabel}" title="${themeLabel}"></a></li>`;
+          const fixedWidthToggleHtml = `<li id="pt-fixedwidth-toggle"><a href="#" aria-label="${fixedWidthLabel}" title="${fixedWidthLabel}"></a></li>`;
+
           el.prepend(themeToggleHtml + fixedWidthToggleHtml, { html: true });
-        }
+        },
       });
 
   return rewriter;
